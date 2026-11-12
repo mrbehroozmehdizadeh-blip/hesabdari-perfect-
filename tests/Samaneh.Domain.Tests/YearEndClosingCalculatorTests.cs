@@ -66,4 +66,37 @@ public sealed class YearEndClosingCalculatorTests
         Assert.Throws<ArgumentException>(() =>
             YearEndClosingCalculator.Calculate([], Guid.Empty));
     }
+
+    [Fact]
+    public void Calculate_RejectsDuplicateTemporaryAccount()
+    {
+        var accountId = Guid.NewGuid();
+        var duplicate = new[]
+        {
+            new TemporaryAccountBalance(accountId, "5001", "Expenses", 100m),
+            new TemporaryAccountBalance(accountId, "5001", "Expenses", 100m)
+        };
+
+        Assert.Throws<ArgumentException>(() =>
+            YearEndClosingCalculator.Calculate(duplicate, RetainedEarnings));
+    }
+
+    [Fact]
+    public void Calculate_RejectsRetainedEarningsAsTemporaryAccount()
+    {
+        var temporary = new TemporaryAccountBalance(
+            RetainedEarnings, "3001", "Retained earnings", 100m);
+
+        Assert.Throws<ArgumentException>(() =>
+            YearEndClosingCalculator.Calculate([temporary], RetainedEarnings));
+    }
+
+    [Fact]
+    public void Calculate_RejectsTemporaryAccountWithoutCode()
+    {
+        var temporary = new TemporaryAccountBalance(Guid.NewGuid(), " ", "Expenses", 100m);
+
+        Assert.Throws<ArgumentException>(() =>
+            YearEndClosingCalculator.Calculate([temporary], RetainedEarnings));
+    }
 }
