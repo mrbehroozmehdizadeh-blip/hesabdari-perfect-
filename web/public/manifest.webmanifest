@@ -3,14 +3,14 @@
   "short_name": "سامانه مالی",
   "lang": "fa-IR",
   "dir": "rtl",
-  "start_url": "/hesabdari-perfect-/",
-  "scope": "/hesabdari-perfect-/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f4f7f7",
   "theme_color": "#112b2d",
   "icons": [
     {
-      "src": "/hesabdari-perfect-/favicon.svg",
+      "src": "./favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
