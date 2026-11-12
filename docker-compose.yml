@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: samaneh
       POSTGRES_USER: samaneh_app
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your private .env file}
     ports:
       - "5432:5432"
     volumes:
@@ -16,6 +16,53 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  migrate:
+    image: postgres:18
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your private .env file}
+    volumes:
+      - ./database/migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      'set -eu;
+      for migration in /migrations/*.sql; do
+        echo "Applying $$migration";
+        psql -h postgres -U samaneh_app -d samaneh -v ON_ERROR_STOP=1 -f "$$migration";
+      done'
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Samaneh.Api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=samaneh;Username=samaneh_app;Password=${POSTGRES_PASSWORD}
+      Authentication__SigningKey: ${AUTHENTICATION_SIGNING_KEY:?Set AUTHENTICATION_SIGNING_KEY in your private .env file}
+      Authentication__Issuer: samaneh-local
+      Authentication__Audience: samaneh-local-web
+      Cors__AllowedOrigins__0: http://localhost:8081
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: /
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8081:80"
 
 volumes:
   samaneh_postgres_data:
