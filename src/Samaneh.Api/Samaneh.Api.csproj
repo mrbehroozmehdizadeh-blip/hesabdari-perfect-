@@ -9,4 +9,7 @@
     <PackageReference Include="Npgsql" Version="10.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Samaneh.Domain\Samaneh.Domain.csproj" />
+  </ItemGroup>
 </Project>
