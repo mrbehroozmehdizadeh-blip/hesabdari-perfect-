@@ -189,7 +189,7 @@ BEGIN
         VALUES
             (gen_random_uuid(),tenant_key,company_key,period_key,'CARRY-CI-SELF',DATE '2026-01-01',
              'EUR','CARRY-CI-KEY-SELF',gen_random_uuid(),'OPENING',period_key);
-    EXCEPTION WHEN check_violation THEN
+    EXCEPTION WHEN raise_exception OR check_violation THEN
         rejected := true;
     END;
     IF NOT rejected THEN
