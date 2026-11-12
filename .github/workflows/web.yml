@@ -29,3 +29,5 @@ jobs:
         run: npm install
       - name: Build web application
         run: npm run build
+      - name: Build web container image
+        run: docker build --build-arg VITE_BASE_PATH=/ -t samaneh-web:ci .
