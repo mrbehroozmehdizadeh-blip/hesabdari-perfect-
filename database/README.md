@@ -1,11 +1,11 @@
 # Database foundation
 
-The initial schema is in `migrations/0001_financial_core.sql`; company membership authorization is added by `migrations/0002_company_memberships.sql`, journal-line company integrity by `migrations/0003_journal_line_company_integrity.sql`, and journal idempotency fingerprints by `migrations/0004_journal_idempotency_fingerprint.sql`. Apply them in numeric order to a new development database.
+The initial schema is in `migrations/0001_financial_core.sql`; company membership authorization is added by `migrations/0002_company_memberships.sql`, journal-line company integrity by `migrations/0003_journal_line_company_integrity.sql`, journal idempotency fingerprints by `migrations/0004_journal_idempotency_fingerprint.sql`, and approval lifecycle / immutability guards by `migrations/0005_journal_approval_lifecycle.sql`. Apply them in numeric order to a new development database.
 
 ## Safety and execution status
 - This migration set is a design baseline for a NEW development database.
 - It has NOT been applied to Floot or to any production database.
-- All four migrations are executed in CI against a fresh, ephemeral PostgreSQL 18 service database. This validates schema creation but is not a backup/restore rehearsal or a production deployment.
+- All five migrations are executed in CI against a fresh, ephemeral PostgreSQL 18 service database. This validates schema creation but is not a backup/restore rehearsal or a production deployment.
 - Do not run it against existing data until a backup, restore rehearsal, schema comparison and explicit migration plan exist.
 
 ## Tenant isolation
@@ -28,6 +28,9 @@ Use a non-owner application database role without BYPASSRLS. The table owner and
 - A single journal entry uses one currency in this initial schema. The current draft API restricts the currency to the company's functional currency until explicit FX conversion and valuation workflows are implemented.
 - Journal draft creation checks company membership, open fiscal period/date, active posting accounts, exact debit/credit equality, and writes the header, lines, and audit event in one transaction.
 - The draft endpoint uses an idempotency key plus a SHA-256 request fingerprint; reusing a key for different content is rejected.
-- Draft creation is NOT approval or posting. Cross-row balancing at the database layer, approval, posting atomicity, immutable posted records, period locking, and audit completeness remain required controls before production.
+- Draft creation is separate from approval and posting. Submission freezes journal lines; approval requires a distinct user with the explicit `FINANCE_APPROVER` membership role and rechecks balance, account validity, and fiscal-period status.
+- The API currently supports draft retrieval, creator-only submission, and independent approval. It does NOT yet post journals into a general ledger.
+- Database triggers enforce the permitted draft → pending → approved → posted state transitions and prevent journal-header mutation after posting. Journal lines become immutable as soon as a draft is submitted.
+- Posting atomicity, general-ledger balance persistence, reversal journals, fine-grained RBAC administration, and audit completeness remain required controls before production.
 - Every tenant-scoped query must use the authenticated tenant context; never accept tenant identity from an untrusted request body as authorization.
 - Company-scoped API access additionally requires an active `company_memberships` row for the authenticated user, tenant, and company. Membership provisioning is administrative; `role_code` is reserved for upcoming fine-grained RBAC enforcement.
