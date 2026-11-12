@@ -21,7 +21,8 @@ COMMIT;
 Use a non-owner application database role without BYPASSRLS. The table owner and superusers can bypass row-level security unless FORCE ROW LEVEL SECURITY is enabled; production role design and FORCE RLS policy are a required security gate before deployment.
 
 ## Important domain boundaries
-- Account tree depth is capped at ten levels.
+- Account tree depth is capped at ten levels. A PostgreSQL trigger validates that each child has an immediate parent exactly one level above and that a posting account cannot be a parent.
+- Account deletion must be evaluated in a consistent transaction and rejected when child accounts, a non-zero balance, or transaction references exist. Foreign keys provide an additional guard for referenced rows.
 - Fixed and floating details are modeled separately; floating dimensions are not additional account-tree levels.
 - Monetary values use PostgreSQL numeric(28,8), never binary floating point.
 - A single journal entry uses one currency in this initial schema. Explicit FX conversion documents and multi-currency posting will be designed as a separate capability.
