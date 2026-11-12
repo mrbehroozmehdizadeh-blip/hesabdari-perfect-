@@ -65,6 +65,7 @@ jobs:
           curl --fail --silent http://localhost:8080/health/db
           curl --fail --silent http://localhost:8080/ > /dev/null
           curl --fail --silent http://localhost:8081/ > /dev/null
+          curl --fail --silent http://localhost:8081/health/db
       - name: Stop Docker Compose stack
         if: always()
         env:
