@@ -8,6 +8,7 @@ DECLARE
     period_key uuid := gen_random_uuid();
     rejected boolean := false;
     opening_id uuid := gen_random_uuid();
+    closing_id uuid := gen_random_uuid();
 BEGIN
     INSERT INTO tenants(id, tenant_code, display_name)
     VALUES (tenant_key, 'CI-' || replace(tenant_key::text,'-',''), 'CI fiscal test');
@@ -39,6 +40,28 @@ BEGIN
         RAISE EXCEPTION 'A second opening journal for the same period must be rejected';
     END IF;
 
+    INSERT INTO journal_entries
+        (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+         idempotency_key,created_by,journal_type)
+    VALUES
+        (closing_id,tenant_key,company_key,period_key,'CLOSE-CI-1',DATE '2026-12-31',
+         'EUR','CLOSE-CI-KEY-1',gen_random_uuid(),'CLOSING');
+
+    rejected := false;
+    BEGIN
+        INSERT INTO journal_entries
+            (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+             idempotency_key,created_by,journal_type)
+        VALUES
+            (gen_random_uuid(),tenant_key,company_key,period_key,'CLOSE-CI-2',DATE '2026-12-31',
+             'EUR','CLOSE-CI-KEY-2',gen_random_uuid(),'CLOSING');
+    EXCEPTION WHEN unique_violation THEN
+        rejected := true;
+    END;
+    IF NOT rejected THEN
+        RAISE EXCEPTION 'A second closing journal for the same period must be rejected';
+    END IF;
+
     rejected := false;
     BEGIN
         UPDATE fiscal_periods SET period_status='CLOSED'
@@ -50,7 +73,7 @@ BEGIN
         RAISE EXCEPTION 'A period with an unposted opening journal must not close';
     END IF;
 
-    DELETE FROM journal_entries WHERE id=opening_id;
+    DELETE FROM journal_entries WHERE id IN (opening_id, closing_id);
 
     UPDATE fiscal_periods SET period_status='CLOSED'
      WHERE tenant_id=tenant_key AND company_id=company_key AND id=period_key;
