@@ -1,6 +1,6 @@
 # Database foundation
 
-The initial schema is in `migrations/0001_financial_core.sql`.
+The initial schema is in `migrations/0001_financial_core.sql`; company membership authorization is added by `migrations/0002_company_memberships.sql`.
 
 ## Safety and execution status
 - This migration is a design baseline for a NEW development database.
@@ -27,4 +27,4 @@ Use a non-owner application database role without BYPASSRLS. The table owner and
 - Monetary values use PostgreSQL numeric(28,8), never binary floating point.
 - A single journal entry uses one currency in this initial schema. Explicit FX conversion documents and multi-currency posting will be designed as a separate capability.
 - Cross-row journal balancing, approval, posting atomicity, immutable posted records, period locking, and audit completeness must be enforced in the application transaction and strengthened with database constraints/triggers before production.
-- Every tenant-scoped query must use the authenticated tenant context; never accept tenant identity from an untrusted request body as authorization.
+- Every tenant-scoped query must use the authenticated tenant context; never accept tenant identity from an untrusted request body as authorization.\n- Company-scoped API access additionally requires an active `company_memberships` row for the authenticated user, tenant, and company. Membership provisioning is administrative; `role_code` is reserved for the upcoming RBAC enforcement.
