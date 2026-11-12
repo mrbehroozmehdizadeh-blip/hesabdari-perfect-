@@ -53,7 +53,13 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
     public async Task CompanyFinancialRoutes_RejectAnonymousRequests(string route)
     {
         var companyId = Guid.NewGuid();
-        using var response = await _client.GetAsync($"/api/companies/{companyId}/{route}/");
+        using var response = await _client.GetAsync(route switch
+        {
+            "accounts" => $"/api/companies/{companyId}/accounts",
+            "fiscal-periods" => $"/api/companies/{companyId}/fiscal-periods",
+            "journal-entries" => $"/api/companies/{companyId}/journal-entries/{Guid.NewGuid()}",
+            _ => throw new ArgumentOutOfRangeException(nameof(route))
+        });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
