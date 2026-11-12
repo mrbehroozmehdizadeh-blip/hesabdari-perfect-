@@ -8,7 +8,16 @@ var connectionString = builder.Configuration.GetConnectionString("Postgres");
 if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
 
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+if (allowedOrigins.Length > 0)
+{
+    builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+        policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
+}
+
 var key = builder.Configuration["Authentication:SigningKey"];
+if (!string.IsNullOrWhiteSpace(key) && System.Text.Encoding.UTF8.GetByteCount(key) < 32)
+    throw new InvalidOperationException("Authentication:SigningKey must contain at least 32 UTF-8 bytes.");
 if (!string.IsNullOrWhiteSpace(key))
 {
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
@@ -204,6 +213,7 @@ if (!string.IsNullOrWhiteSpace(key))
     });
 
 }
+if (allowedOrigins.Length > 0) app.UseCors();
 app.UseAuthentication(); app.UseAuthorization();
 app.Run();
 
