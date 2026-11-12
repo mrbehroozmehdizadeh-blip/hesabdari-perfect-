@@ -47,4 +47,4 @@ jobs:
       - name: Validate database migration against PostgreSQL 18
         env:
           PGPASSWORD: ci-test-password
-        run: psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0001_financial_core.sql
+        run: psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0001_financial_core.sql\n          psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0002_company_memberships.sql
