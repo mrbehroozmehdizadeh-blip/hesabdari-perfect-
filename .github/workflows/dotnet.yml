@@ -54,3 +54,4 @@ jobs:
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0004_journal_idempotency_fingerprint.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0005_journal_approval_lifecycle.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0006_general_ledger.sql
+          psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0007_ledger_provenance_guards.sql
