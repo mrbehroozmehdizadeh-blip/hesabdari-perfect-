@@ -5,7 +5,7 @@ The initial schema is in `migrations/0001_financial_core.sql`; company membershi
 ## Safety and execution status
 - This migration set is a design baseline for a NEW development database.
 - It has NOT been applied to Floot or to any production database.
-- All nine migrations and the rollback-only invariant suites are executed in CI against a fresh, ephemeral PostgreSQL 18 service database. This validates schema creation but is not a backup/restore rehearsal or a production deployment.
+- All ten migrations and the rollback-only invariant suites are executed in CI against a fresh, ephemeral PostgreSQL 18 service database. This validates schema creation but is not a backup/restore rehearsal or a production deployment.
 - Do not run it against existing data until a backup, restore rehearsal, schema comparison and explicit migration plan exist.
 
 ## Tenant isolation
