@@ -34,6 +34,7 @@ CREATE TABLE fiscal_periods (
     CONSTRAINT fk_period_company FOREIGN KEY (tenant_id, company_id)
         REFERENCES companies(tenant_id, id),
     CONSTRAINT uq_period_tenant_id UNIQUE (tenant_id, id),
+    CONSTRAINT uq_period_tenant_company_id UNIQUE (tenant_id, company_id, id),
     CONSTRAINT uq_period_company_code UNIQUE (tenant_id, company_id, period_code),
     CONSTRAINT ck_period_dates CHECK (ends_on >= starts_on),
     CONSTRAINT ck_period_status CHECK (period_status IN ('OPEN', 'CLOSED', 'LOCKED'))
@@ -102,8 +103,8 @@ CREATE TABLE journal_entries (
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT fk_journal_company FOREIGN KEY (tenant_id, company_id)
         REFERENCES companies(tenant_id, id),
-    CONSTRAINT fk_journal_period FOREIGN KEY (tenant_id, fiscal_period_id)
-        REFERENCES fiscal_periods(tenant_id, id),
+    CONSTRAINT fk_journal_period FOREIGN KEY (tenant_id, company_id, fiscal_period_id)
+        REFERENCES fiscal_periods(tenant_id, company_id, id),
     CONSTRAINT uq_journal_tenant_id UNIQUE (tenant_id, id),
     CONSTRAINT uq_journal_number UNIQUE (tenant_id, company_id, entry_number),
     CONSTRAINT uq_journal_idempotency UNIQUE (tenant_id, company_id, idempotency_key),
@@ -126,6 +127,7 @@ CREATE TABLE journal_lines (
         REFERENCES journal_entries(tenant_id, id),
     CONSTRAINT fk_line_account FOREIGN KEY (tenant_id, company_id, account_id)
         REFERENCES accounts(tenant_id, company_id, id),
+    CONSTRAINT uq_journal_line_tenant_company_id UNIQUE (tenant_id, company_id, id),
     CONSTRAINT uq_journal_line_number UNIQUE (tenant_id, journal_entry_id, line_number),
     CONSTRAINT ck_line_number CHECK (line_number > 0),
     CONSTRAINT ck_line_amounts_nonnegative CHECK (debit_amount >= 0 AND credit_amount >= 0),
@@ -141,8 +143,8 @@ CREATE TABLE journal_line_dimensions (
     journal_line_id uuid NOT NULL,
     dimension_id uuid NOT NULL,
     PRIMARY KEY (tenant_id, journal_line_id, dimension_id),
-    CONSTRAINT fk_line_dimension_line FOREIGN KEY (tenant_id, journal_line_id)
-        REFERENCES journal_lines(tenant_id, id),
+    CONSTRAINT fk_line_dimension_line FOREIGN KEY (tenant_id, company_id, journal_line_id)
+        REFERENCES journal_lines(tenant_id, company_id, id),
     CONSTRAINT fk_line_dimension_dimension FOREIGN KEY (tenant_id, company_id, dimension_id)
         REFERENCES floating_dimensions(tenant_id, company_id, id)
 );
