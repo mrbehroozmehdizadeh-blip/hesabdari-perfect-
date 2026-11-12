@@ -102,18 +102,23 @@ public static class CarryForwardEndpoints
 
         await using (var closingCheck = new NpgsqlCommand("""
             SELECT EXISTS(
-                SELECT 1 FROM journal_entries
-                 WHERE tenant_id=@tenant AND company_id=@company
-                   AND fiscal_period_id=@source AND journal_type='CLOSING'
-                   AND entry_status='POSTED'
+                SELECT 1
+                  FROM accounts a
+                  JOIN general_ledger_lines gl
+                    ON gl.tenant_id=a.tenant_id AND gl.company_id=a.company_id
+                   AND gl.account_id=a.id AND gl.fiscal_period_id=@source
+                 WHERE a.tenant_id=@tenant AND a.company_id=@company
+                   AND a.account_class IN ('REVENUE','EXPENSE')
+                 GROUP BY a.id
+                HAVING sum(gl.debit_amount-gl.credit_amount) <> 0
             )
             """, c, tx))
         {
             closingCheck.Parameters.AddWithValue("tenant", tenant);
             closingCheck.Parameters.AddWithValue("company", companyId);
             closingCheck.Parameters.AddWithValue("source", input.SourceFiscalPeriodId);
-            if ((bool)(await closingCheck.ExecuteScalarAsync(ct) ?? false) == false)
-                return Results.Conflict(new { error = "پیش از انتقال مانده‌های دائمی، سند بستن حساب‌های موقت باید در دوره مبدأ تأیید و ثبت قطعی شده باشد." });
+            if ((bool)(await closingCheck.ExecuteScalarAsync(ct) ?? false))
+                return Results.Conflict(new { error = "مانده حساب‌های درآمد و هزینه دوره مبدأ هنوز صفر نشده است؛ ابتدا بستن حساب‌های موقت را تکمیل و ثبت قطعی کنید." });
         }
 
         await using (var existing = new NpgsqlCommand("""
