@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Npgsql;
+using Samaneh.Domain;
 
 public static class CarryForwardReconciliationEndpoints
 {
@@ -71,10 +72,7 @@ public static class CarryForwardReconciliationEndpoints
             targetStatus = reader.GetString(7);
         }
 
-        var lines = new List<object>();
-        var matched = true;
-        decimal expectedDebitTotal = 0m, expectedCreditTotal = 0m;
-        decimal actualDebitTotal = 0m, actualCreditTotal = 0m;
+        var accountBalances = new List<CarryForwardAccountBalance>();
         await using (var compare = new NpgsqlCommand("""
             WITH expected_net AS (
                 SELECT a.id AS account_id,a.account_code,a.account_name,
@@ -120,33 +118,32 @@ public static class CarryForwardReconciliationEndpoints
             await using var reader = await compare.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
-                var accountId = reader.GetGuid(0);
-                var code = reader.GetString(1);
-                var name = reader.GetString(2);
-                var ed = reader.GetDecimal(3); var ec = reader.GetDecimal(4);
-                var ad = reader.GetDecimal(5); var ac = reader.GetDecimal(6);
-                var isMatch = ed == ad && ec == ac;
-                matched &= isMatch;
-                expectedDebitTotal += ed; expectedCreditTotal += ec;
-                actualDebitTotal += ad; actualCreditTotal += ac;
-                lines.Add(new { accountId, accountCode=code, accountName=name,
-                    expectedDebit=ed, expectedCredit=ec, openingDebit=ad, openingCredit=ac,
-                    differenceDebit=ad-ed, differenceCredit=ac-ec, matched=isMatch });
+                accountBalances.Add(new CarryForwardAccountBalance(
+                    reader.GetGuid(0), reader.GetString(1), reader.GetString(2),
+                    reader.GetDecimal(3), reader.GetDecimal(4),
+                    reader.GetDecimal(5), reader.GetDecimal(6)));
             }
         }
 
-        var isBalanced = expectedDebitTotal == expectedCreditTotal &&
-                         actualDebitTotal == actualCreditTotal;
-        var canReconcile = status == "POSTED" && sourceStatus == "LOCKED" &&
-                           targetStart == sourceEnd.AddDays(1) &&
-                           isBalanced && matched && lines.Count > 0;
+        var reconciliation = CarryForwardReconciliation.Evaluate(
+            status, sourceStatus, sourceEnd, targetStart, accountBalances);
+        var lines = accountBalances.Select(x => new {
+            accountId=x.AccountId, accountCode=x.AccountCode, accountName=x.AccountName,
+            expectedDebit=x.ExpectedDebit, expectedCredit=x.ExpectedCredit,
+            openingDebit=x.OpeningDebit, openingCredit=x.OpeningCredit,
+            differenceDebit=x.DifferenceDebit, differenceCredit=x.DifferenceCredit,
+            matched=x.Matched
+        }).ToList();
         await tx.CommitAsync(ct);
         return Results.Ok(new {
             journalId, sourcePeriodId, targetPeriodId, sourceEnd, targetStart,
             journalStatus=status, sourcePeriodStatus=sourceStatus, targetPeriodStatus=targetStatus,
-            currency, lineCount=lines.Count, matched, isBalanced, reconciled=canReconcile,
-            expectedDebitTotal, expectedCreditTotal, openingDebitTotal=actualDebitTotal,
-            openingCreditTotal=actualCreditTotal, lines
+            currency, lineCount=lines.Count, matched=reconciliation.Matched,
+            isBalanced=reconciliation.IsBalanced, reconciled=reconciliation.Reconciled,
+            expectedDebitTotal=reconciliation.ExpectedDebitTotal,
+            expectedCreditTotal=reconciliation.ExpectedCreditTotal,
+            openingDebitTotal=reconciliation.OpeningDebitTotal,
+            openingCreditTotal=reconciliation.OpeningCreditTotal, lines
         });
     }
 }
