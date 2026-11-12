@@ -15,6 +15,7 @@ public static class JournalEndpoints
         group.MapPost("/{journalId:guid}/submit", SubmitForApproval);
         group.MapPost("/{journalId:guid}/approve", Approve);
         group.MapPost("/{journalId:guid}/post", PostToLedger);
+        group.MapPost("/{journalId:guid}/reverse", CreateReversalDraft);
         group.MapGet("/{journalId:guid}", GetById);
     }
 
@@ -379,6 +380,177 @@ public static class JournalEndpoints
     }
 
 
+
+    private static async Task<IResult> CreateReversalDraft(
+        Guid companyId, Guid journalId, CreateReversalDraftRequest input,
+        ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct)
+    {
+        if (!TryIdentity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
+        var number = input.EntryNumber?.Trim();
+        var key = input.IdempotencyKey?.Trim();
+        var description = input.Description?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(number) || number.Length > 50 ||
+            string.IsNullOrWhiteSpace(key) || key.Length > 120 || description.Length > 1000 ||
+            input.FiscalPeriodId == Guid.Empty)
+            return Results.ValidationProblem(new Dictionary<string,string[]> {
+                ["reversal"] = ["شماره سند، کلید تکرارناپذیری و دوره مالی معتبر الزامی است."]
+            });
+
+        var normalized = new {
+            SourceJournalId = journalId, EntryNumber = number,
+            EntryDate = input.EntryDate.ToString("yyyy-MM-dd"),
+            input.FiscalPeriodId, Description = description
+        };
+        var fingerprint = Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(JsonSerializer.Serialize(normalized)))).ToLowerInvariant();
+
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await SetTenant(c, tx, tenant, ct);
+        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+
+        string currency;
+        await using (var source = new NpgsqlCommand("""
+            SELECT entry_status, currency_code
+              FROM journal_entries
+             WHERE tenant_id=@tenant AND company_id=@company AND id=@id
+             FOR UPDATE
+            """, c, tx))
+        {
+            source.Parameters.AddWithValue("tenant",tenant);
+            source.Parameters.AddWithValue("company",companyId);
+            source.Parameters.AddWithValue("id",journalId);
+            await using var reader = await source.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return Results.NotFound();
+            var status = reader.GetString(0);
+            currency = reader.GetString(1).Trim();
+            await reader.CloseAsync();
+            if (status != "POSTED")
+                return Results.Conflict(new { error = "فقط سند ثبت‌شده در دفتر کل قابل تهیه سند معکوس است." });
+        }
+
+        await using (var existing = new NpgsqlCommand("""
+            SELECT idempotency_key, request_fingerprint, id, entry_status
+              FROM journal_entries
+             WHERE tenant_id=@tenant AND company_id=@company AND reversal_of_journal_id=@source
+            """, c, tx))
+        {
+            existing.Parameters.AddWithValue("tenant",tenant);
+            existing.Parameters.AddWithValue("company",companyId);
+            existing.Parameters.AddWithValue("source",journalId);
+            await using var reader = await existing.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                var oldKey = reader.GetString(0);
+                var oldFingerprint = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
+                var oldId = reader.GetGuid(2);
+                var oldStatus = reader.GetString(3);
+                await reader.CloseAsync();
+                if (oldKey == key && oldFingerprint == fingerprint)
+                {
+                    await tx.CommitAsync(ct);
+                    return Results.Ok(new { id=oldId, status=oldStatus, reused=true });
+                }
+                return Results.Conflict(new { error = "برای این سند قبلاً سند معکوس ایجاد شده است؛ از همان سند استفاده کنید." });
+            }
+        }
+
+        await using (var period = new NpgsqlCommand("""
+            SELECT p.period_status,p.starts_on,p.ends_on,co.functional_currency
+              FROM fiscal_periods p
+              JOIN companies co ON co.tenant_id=p.tenant_id AND co.id=p.company_id
+             WHERE p.tenant_id=@tenant AND p.company_id=@company AND p.id=@period
+            """, c, tx))
+        {
+            period.Parameters.AddWithValue("tenant",tenant);
+            period.Parameters.AddWithValue("company",companyId);
+            period.Parameters.AddWithValue("period",input.FiscalPeriodId);
+            await using var reader = await period.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return Results.ValidationProblem(
+                new Dictionary<string,string[]> { ["fiscalPeriodId"]=["دوره مالی متعلق به این شرکت نیست."] });
+            var status=reader.GetString(0);
+            var starts=reader.GetFieldValue<DateOnly>(1);
+            var ends=reader.GetFieldValue<DateOnly>(2);
+            var functional=reader.GetString(3).Trim();
+            if(status!="OPEN" || input.EntryDate<starts || input.EntryDate>ends)
+                return Results.Conflict(new { error="دوره مالی جدید باز نیست یا تاریخ سند خارج از محدوده آن است." });
+            if(currency!=functional)
+                return Results.Conflict(new { error="ارز سند مبدأ با ارز عملیاتی شرکت برابر نیست؛ مسیر تسعیر/اصلاح ارزی هنوز تکمیل نشده است." });
+        }
+
+        long sourceLines;
+        decimal debit;
+        decimal credit;
+        await using (var totals = new NpgsqlCommand("""
+            SELECT count(*),coalesce(sum(debit_amount),0),coalesce(sum(credit_amount),0)
+              FROM journal_lines
+             WHERE tenant_id=@tenant AND company_id=@company AND journal_entry_id=@source
+            """, c, tx))
+        {
+            totals.Parameters.AddWithValue("tenant",tenant);
+            totals.Parameters.AddWithValue("company",companyId);
+            totals.Parameters.AddWithValue("source",journalId);
+            await using var reader=await totals.ExecuteReaderAsync(ct);
+            await reader.ReadAsync(ct);
+            sourceLines=reader.GetInt64(0);
+            debit=reader.GetDecimal(1);
+            credit=reader.GetDecimal(2);
+        }
+        if(sourceLines<2 || debit<=0m || debit!=credit)
+            return Results.Conflict(new { error="سند مبدأ از نظر تعداد سطر یا توازن قابل معکوس‌سازی نیست." });
+
+        var reversalId=Guid.NewGuid();
+        await using (var insert = new NpgsqlCommand("""
+            INSERT INTO journal_entries
+                (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+                 entry_status,description,idempotency_key,request_fingerprint,created_by,reversal_of_journal_id)
+            VALUES
+                (@id,@tenant,@company,@period,@number,@date,@currency,
+                 'DRAFT',@description,@key,@fingerprint,@actor,@source)
+            """, c, tx))
+        {
+            insert.Parameters.AddWithValue("id",reversalId);
+            insert.Parameters.AddWithValue("tenant",tenant);
+            insert.Parameters.AddWithValue("company",companyId);
+            insert.Parameters.AddWithValue("period",input.FiscalPeriodId);
+            insert.Parameters.AddWithValue("number",number);
+            insert.Parameters.AddWithValue("date",input.EntryDate);
+            insert.Parameters.AddWithValue("currency",currency);
+            insert.Parameters.AddWithValue("description",string.IsNullOrWhiteSpace(description)
+                ? $"سند معکوس سند {journalId}" : description);
+            insert.Parameters.AddWithValue("key",key);
+            insert.Parameters.AddWithValue("fingerprint",fingerprint);
+            insert.Parameters.AddWithValue("actor",actor);
+            insert.Parameters.AddWithValue("source",journalId);
+            await insert.ExecuteNonQueryAsync(ct);
+        }
+
+        await using (var copy = new NpgsqlCommand("""
+            INSERT INTO journal_lines
+                (tenant_id,company_id,journal_entry_id,line_number,account_id,debit_amount,credit_amount,description)
+            SELECT tenant_id,company_id,@reversal,
+                   row_number() OVER (ORDER BY line_number)::integer,
+                   account_id,credit_amount,debit_amount,
+                   CASE WHEN description='' THEN 'سطر معکوس' ELSE 'معکوس: ' || description END
+              FROM journal_lines
+             WHERE tenant_id=@tenant AND company_id=@company AND journal_entry_id=@source
+             ORDER BY line_number
+            """, c, tx))
+        {
+            copy.Parameters.AddWithValue("reversal",reversalId);
+            copy.Parameters.AddWithValue("tenant",tenant);
+            copy.Parameters.AddWithValue("company",companyId);
+            copy.Parameters.AddWithValue("source",journalId);
+            if(await copy.ExecuteNonQueryAsync(ct)!=sourceLines) return Results.Conflict();
+        }
+
+        await WriteAudit(c,tx,tenant,companyId,actor,reversalId,"JOURNAL_REVERSAL_DRAFT_CREATED",ct);
+        await tx.CommitAsync(ct);
+        return Results.Created($"/api/companies/{companyId}/journal-entries/{reversalId}",
+            new { id=reversalId, sourceJournalId=journalId, status="DRAFT", lineCount=sourceLines,
+                  debitTotal=debit, creditTotal=credit, currency, reused=false });
+    }
+
     private static async Task<IResult> PostToLedger(
         Guid companyId, Guid journalId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct)
     {
@@ -649,3 +821,7 @@ public sealed record CreateJournalLineRequest(
     decimal DebitAmount,
     decimal CreditAmount,
     string? Description);
+
+public sealed record CreateReversalDraftRequest(
+    string? EntryNumber, DateOnly EntryDate, Guid FiscalPeriodId,
+    string? IdempotencyKey, string? Description);
