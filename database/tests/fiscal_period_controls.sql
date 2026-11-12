@@ -70,43 +70,6 @@ BEGIN
         RAISE EXCEPTION 'A second closing journal for the same period must be rejected';
     END IF;
 
-    INSERT INTO journal_entries
-        (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
-         idempotency_key,created_by,journal_type,opening_source_period_id)
-    VALUES
-        (carry_id,tenant_key,company_key,next_period_id,'CARRY-CI-1',DATE '2027-01-01',
-         'EUR','CARRY-CI-KEY-1',gen_random_uuid(),'OPENING',period_key);
-
-    rejected := false;
-    BEGIN
-        INSERT INTO journal_entries
-            (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
-             idempotency_key,created_by,journal_type,opening_source_period_id)
-        VALUES
-            (carry_duplicate_id,tenant_key,company_key,later_period_id,'CARRY-CI-2',DATE '2028-01-01',
-             'EUR','CARRY-CI-KEY-2',gen_random_uuid(),'OPENING',period_key);
-    EXCEPTION WHEN unique_violation THEN
-        rejected := true;
-    END;
-    IF NOT rejected THEN
-        RAISE EXCEPTION 'A source fiscal period must not be carried forward more than once';
-    END IF;
-
-    rejected := false;
-    BEGIN
-        INSERT INTO journal_entries
-            (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
-             idempotency_key,created_by,journal_type,opening_source_period_id)
-        VALUES
-            (gen_random_uuid(),tenant_key,company_key,period_key,'CARRY-CI-SELF',DATE '2026-01-01',
-             'EUR','CARRY-CI-KEY-SELF',gen_random_uuid(),'OPENING',period_key);
-    EXCEPTION WHEN check_violation THEN
-        rejected := true;
-    END;
-    IF NOT rejected THEN
-        RAISE EXCEPTION 'Carry-forward source and target periods must be different';
-    END IF;
-
     rejected := false;
     BEGIN
         UPDATE fiscal_periods SET period_status='CLOSED'
@@ -144,6 +107,44 @@ BEGIN
     IF (SELECT period_status FROM fiscal_periods WHERE id=period_key) <> 'LOCKED' THEN
         RAISE EXCEPTION 'Expected period to lock';
     END IF;
+
+    INSERT INTO journal_entries
+        (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+         idempotency_key,created_by,journal_type,opening_source_period_id)
+    VALUES
+        (carry_id,tenant_key,company_key,next_period_id,'CARRY-CI-1',DATE '2027-01-01',
+         'EUR','CARRY-CI-KEY-1',gen_random_uuid(),'OPENING',period_key);
+
+    rejected := false;
+    BEGIN
+        INSERT INTO journal_entries
+            (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+             idempotency_key,created_by,journal_type,opening_source_period_id)
+        VALUES
+            (carry_duplicate_id,tenant_key,company_key,later_period_id,'CARRY-CI-2',DATE '2028-01-01',
+             'EUR','CARRY-CI-KEY-2',gen_random_uuid(),'OPENING',period_key);
+    EXCEPTION WHEN unique_violation THEN
+        rejected := true;
+    END;
+    IF NOT rejected THEN
+        RAISE EXCEPTION 'A source fiscal period must not be carried forward more than once';
+    END IF;
+
+    rejected := false;
+    BEGIN
+        INSERT INTO journal_entries
+            (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+             idempotency_key,created_by,journal_type,opening_source_period_id)
+        VALUES
+            (gen_random_uuid(),tenant_key,company_key,period_key,'CARRY-CI-SELF',DATE '2026-01-01',
+             'EUR','CARRY-CI-KEY-SELF',gen_random_uuid(),'OPENING',period_key);
+    EXCEPTION WHEN check_violation THEN
+        rejected := true;
+    END;
+    IF NOT rejected THEN
+        RAISE EXCEPTION 'Carry-forward source and target periods must be different';
+    END IF;
+
 END $$;
 
 ROLLBACK;
