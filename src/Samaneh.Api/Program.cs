@@ -226,5 +226,6 @@ static async Task Tenant(NpgsqlConnection c,NpgsqlTransaction tx,Guid id,Cancell
     await using var cmd=new NpgsqlCommand("SELECT set_config('app.tenant_id',@tenant,true)",c,tx);
     cmd.Parameters.AddWithValue("tenant",id.ToString()); await cmd.ExecuteNonQueryAsync(ct);
 }
-public sealed record CreateAccount(string? Code,string? Name,int Level,Guid? ParentId,string? AccountClass,string? NormalBalance,string? DetailMode,bool IsPostable);\npublic sealed record UpdateAccount(string? Name, bool IsActive);
+public sealed record CreateAccount(string? Code,string? Name,int Level,Guid? ParentId,string? AccountClass,string? NormalBalance,string? DetailMode,bool IsPostable);
+public sealed record UpdateAccount(string? Name, bool IsActive);
 public partial class Program { }
