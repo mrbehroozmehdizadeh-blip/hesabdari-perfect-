@@ -22,3 +22,5 @@ jobs:
         run: dotnet restore Samaneh.sln
       - name: Build
         run: dotnet build Samaneh.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test Samaneh.sln --configuration Release --no-build
