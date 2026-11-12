@@ -49,6 +49,29 @@ jobs:
           POSTGRES_PASSWORD: ci-test-password
           AUTHENTICATION_SIGNING_KEY: ci-only-signing-key-with-at-least-32-bytes
         run: docker compose config --quiet
+      - name: Run full Docker Compose stack and smoke tests
+        env:
+          POSTGRES_PASSWORD: ci-test-password
+          AUTHENTICATION_SIGNING_KEY: ci-only-signing-key-with-at-least-32-bytes
+          POSTGRES_HOST_PORT: 55432
+        run: |
+          docker compose up --build -d
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://localhost:8080/health/db; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent http://localhost:8080/health/db
+          curl --fail --silent http://localhost:8080/ > /dev/null
+          curl --fail --silent http://localhost:8081/ > /dev/null
+      - name: Stop Docker Compose stack
+        if: always()
+        env:
+          POSTGRES_PASSWORD: ci-test-password
+          AUTHENTICATION_SIGNING_KEY: ci-only-signing-key-with-at-least-32-bytes
+          POSTGRES_HOST_PORT: 55432
+        run: docker compose down --volumes
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Validate database migrations against PostgreSQL 18
