@@ -48,3 +48,46 @@ After the first successful Pages deployment, the preview URL is:
 `https://mrbehroozmehdizadeh-blip.github.io/hesabdari-perfect-/`
 
 GitHub repository settings may require enabling **Settings → Pages → Build and deployment → Source: GitHub Actions** once. The deployment workflow is `.github/workflows/pages.yml`.
+
+## اجرای محلی با Docker
+
+این راه‌اندازی برای **توسعه و آزمایش محلی** است و سرویس تولیدی محسوب نمی‌شود.
+
+پیش‌نیاز: Docker Desktop با Docker Compose فعال.
+
+در Windows PowerShell از ریشه مخزن:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+فایل خصوصی `.env` را باز کنید و برای `POSTGRES_PASSWORD` و `AUTHENTICATION_SIGNING_KEY` مقادیر تصادفی و قوی قرار دهید. فایل واقعی `.env` نباید commit شود.
+
+سپس اجرا کنید:
+
+```powershell
+docker compose up --build
+```
+
+نشانی‌های محلی:
+- رابط وب نمایشی: http://localhost:8081
+- سلامت API: http://localhost:8080/health
+- اتصال API به PostgreSQL: http://localhost:8080/health/db
+
+برای توقف:
+
+```powershell
+docker compose down
+```
+
+داده‌های PostgreSQL در volume باقی می‌مانند. اجرای `docker compose down -v` آن volume و داده‌های محلی را حذف می‌کند؛ فقط اگر عمداً قصد پاک‌کردن پایگاه داده آزمایشی را دارید از آن استفاده کنید.
+
+سرویس `migrate` فایل‌های SQL را به ترتیب نام اجرا می‌کند و نسخه‌های اعمال‌شده را در جدول `schema_migrations` ثبت می‌کند تا اجرای مجدد Compose، مهاجرت‌های موفق را دوباره اجرا نکند. این سازوکار جایگزین برنامه مهاجرت production با backup، restore rehearsal، قفل مهاجرت و بررسی سازگاری نیست.
+
+### محدودیت‌ها و هشدارهای امنیتی
+
+- رابط وب فعلی هنوز به API متصل نشده و داده‌های صفحه نمایشی هستند.
+- API برای فعال‌شدن مسیرهای محافظت‌شده به JWT معتبر از یک ارائه‌دهنده هویت مورد اعتماد نیاز دارد؛ این بسته محلی هنوز صفحه ورود، صدور/تمدید توکن یا MFA ندارد.
+- تنظیم PostgreSQL در این Compose ساده‌سازی‌شده و مخصوص توسعه است؛ نقش دیتابیس، RLS و مجوزها باید پیش از هر استقرار واقعی با حساب غیرمالک و بدون BYPASSRLS سخت‌سازی شوند.
+- این Compose به‌صورت پیش‌فرض برای دسترسی عمومی اینترنت، داده واقعی مالی یا محیط تولید امن نیست.
+- مهاجرت‌ها فقط روی پایگاه داده تازه توسعه‌ای اجرا شوند؛ هیچ داده‌ای از Floot منتقل نمی‌شود.
