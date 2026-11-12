@@ -214,7 +214,7 @@ if (!string.IsNullOrWhiteSpace(key))
 
 }
 if (allowedOrigins.Length > 0) app.UseCors();
-app.UseAuthentication(); app.UseAuthorization();
+if (!string.IsNullOrWhiteSpace(key)) { app.UseAuthentication(); app.UseAuthorization(); }
 app.Run();
 
 static bool Identity(ClaimsPrincipal p,out Guid tenant,out Guid actor) {
