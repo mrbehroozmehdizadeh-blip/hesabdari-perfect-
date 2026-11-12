@@ -23,7 +23,7 @@ Set these values through deployment secrets/environment variables, never commit 
 
 The current API validates issuer, audience, signing key, token expiry, and the JWT signature. The token must contain a UUID `tenant_id` claim and a UUID `sub` (or NameIdentifier) claim. Tenant identity is read only from validated claims, never from request JSON.
 
-A trusted identity provider must issue these tokens. This project does not yet implement user registration, password login, refresh-token rotation, MFA, role/permission administration, or key rotation. Do not create production tokens manually or expose the signing key to the browser.
+A trusted identity provider must issue these tokens. A trusted administrative provisioning process must also insert an active `company_memberships` row for each permitted user/company pair; no public self-service membership endpoint is exposed. This project does not yet implement user registration, password login, refresh-token rotation, MFA, role/permission administration, or key rotation. Do not create production tokens manually or expose the signing key to the browser.
 
 ## Company membership authorization\n\nEvery account and analytical-dimension endpoint now requires an active row in `company_memberships` matching the validated JWT `tenant_id`, the route `companyId`, and the JWT `sub` user UUID. A tenant claim alone no longer grants access to every company. Membership rows are provisioned by a trusted administrative process; there is intentionally no self-service membership endpoint. `role_code` is stored for the next RBAC stage, but fine-grained role permissions are not yet enforced.\n\nThe migration `database/migrations/0002_company_memberships.sql` creates this table. Before using the endpoints, an administrator must create a company membership for each authorized user.\n\n## Tenant isolation and database role
 
@@ -34,7 +34,7 @@ Before production:
 2. Consider `FORCE ROW LEVEL SECURITY` after validating migration and operational behavior.
 3. Restrict schema/table privileges to the minimum required.
 4. Require TLS for API and database connections, secret rotation, backups, restore drills, rate limits, structured security logs, and monitoring.
-5. Add explicit authorization policies for company membership and role-based access. Tenant claim validation alone does not prove that a user is authorized for every company in that tenant.
+5. Enforce role-based permissions for each action and data scope. Company membership is now checked, but `role_code` is not yet mapped to fine-grained permissions.
 
 ## Deletion policy and limitations
 
