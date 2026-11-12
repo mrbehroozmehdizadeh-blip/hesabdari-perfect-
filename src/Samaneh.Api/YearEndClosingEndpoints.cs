@@ -2,7 +2,8 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Npgsql;\nusing Samaneh.Domain;
+using Npgsql;
+using Samaneh.Domain;
 
 public static class YearEndClosingEndpoints
 {
@@ -130,6 +131,30 @@ public static class YearEndClosingEndpoints
             if ((bool)(await unfinished.ExecuteScalarAsync(ct) ?? false))
                 return Results.Conflict(new {
                     error = "پیش از تهیه سند بستن، همه اسناد عادی دوره باید تعیین تکلیف و ثبت قطعی شوند؛ اسناد پیش‌نویس یا در انتظار تأیید باقی مانده‌اند."
+                });
+        }
+
+        await using (var inactive = new NpgsqlCommand("""
+            SELECT a.account_code
+              FROM accounts a
+              JOIN general_ledger_lines gl
+                ON gl.tenant_id=a.tenant_id AND gl.company_id=a.company_id
+               AND gl.account_id=a.id AND gl.fiscal_period_id=@period
+             WHERE a.tenant_id=@tenant AND a.company_id=@company
+               AND a.is_postable=true AND a.is_active=false
+               AND a.account_class IN ('REVENUE','EXPENSE')
+             GROUP BY a.id,a.account_code
+            HAVING sum(gl.debit_amount-gl.credit_amount) <> 0
+             ORDER BY a.account_code
+             LIMIT 1
+            """, c, tx))
+        {
+            inactive.Parameters.AddWithValue("tenant", tenant);
+            inactive.Parameters.AddWithValue("company", companyId);
+            inactive.Parameters.AddWithValue("period", input.FiscalPeriodId);
+            if (await inactive.ExecuteScalarAsync(ct) is string inactiveCode)
+                return Results.Conflict(new {
+                    error = $"حساب درآمد یا هزینه {inactiveCode} دارای مانده است اما غیرفعال است؛ پیش از بستن سال باید وضعیت آن بررسی شود."
                 });
         }
 
