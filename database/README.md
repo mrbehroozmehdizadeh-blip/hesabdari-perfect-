@@ -1,11 +1,11 @@
 # Database foundation
 
-The initial schema is in `migrations/0001_financial_core.sql`; company membership authorization is added by `migrations/0002_company_memberships.sql`. Apply them in numeric order to a new development database.
+The initial schema is in `migrations/0001_financial_core.sql`; company membership authorization is added by `migrations/0002_company_memberships.sql`, and journal-line company integrity is added by `migrations/0003_journal_line_company_integrity.sql`. Apply them in numeric order to a new development database.
 
 ## Safety and execution status
 - This migration is a design baseline for a NEW development database.
 - It has NOT been applied to Floot or to any production database.
-- Both migrations are executed in CI against a fresh, ephemeral PostgreSQL 18 service database. This validates schema creation but is not a backup/restore rehearsal or a production deployment.
+- All three migrations are executed in CI against a fresh, ephemeral PostgreSQL 18 service database. This validates schema creation but is not a backup/restore rehearsal or a production deployment.
 - Do not run it against existing data until a backup, restore rehearsal, schema comparison and explicit migration plan exist.
 
 ## Tenant isolation
