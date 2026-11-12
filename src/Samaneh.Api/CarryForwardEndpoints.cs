@@ -100,6 +100,22 @@ public static class CarryForwardEndpoints
         if (targetStart != sourceEnd.AddDays(1))
             return Results.Conflict(new { error = "دوره مقصد باید دقیقاً از روز بعد پایان دوره مبدأ آغاز شود؛ انتقال بین دوره‌های دارای فاصله یا هم‌پوشانی مجاز نیست." });
 
+        await using (var closingCheck = new NpgsqlCommand("""
+            SELECT EXISTS(
+                SELECT 1 FROM journal_entries
+                 WHERE tenant_id=@tenant AND company_id=@company
+                   AND fiscal_period_id=@source AND journal_type='CLOSING'
+                   AND entry_status='POSTED'
+            )
+            """, c, tx))
+        {
+            closingCheck.Parameters.AddWithValue("tenant", tenant);
+            closingCheck.Parameters.AddWithValue("company", companyId);
+            closingCheck.Parameters.AddWithValue("source", input.SourceFiscalPeriodId);
+            if ((bool)(await closingCheck.ExecuteScalarAsync(ct) ?? false) == false)
+                return Results.Conflict(new { error = "پیش از انتقال مانده‌های دائمی، سند بستن حساب‌های موقت باید در دوره مبدأ تأیید و ثبت قطعی شده باشد." });
+        }
+
         await using (var existing = new NpgsqlCommand("""
             SELECT id,request_fingerprint FROM journal_entries
              WHERE tenant_id=@tenant AND company_id=@company AND idempotency_key=@key
