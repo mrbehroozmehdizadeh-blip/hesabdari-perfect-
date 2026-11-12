@@ -50,3 +50,4 @@ jobs:
         run: |
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0001_financial_core.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0002_company_memberships.sql
+          psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0003_journal_line_company_integrity.sql
