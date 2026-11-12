@@ -1,45 +1,58 @@
-import { useCallback, useState } from "react";
-type Account={id:string;code:string;name:string;level:number;parentId:string|null;accountClass:string;normalBalance:string;detailMode:string;isPostable:boolean;isActive:boolean};
-const classes=[{value:"ASSET",label:"دارایی"},{value:"LIABILITY",label:"بدهی"},{value:"EQUITY",label:"حقوق مالکانه"},{value:"REVENUE",label:"درآمد"},{value:"EXPENSE",label:"هزینه"}];
-export default function App(){
- const [api,setApi]=useState("");const [token,setToken]=useState("");const [company,setCompany]=useState("");
- const [accounts,setAccounts]=useState<Account[]>([]);const [message,setMessage]=useState("برای مشاهده کدینگ، نشانی API، شناسه شرکت و توکن معتبر را وارد کنید.");
- const [busy,setBusy]=useState(false);const [showCreate,setShowCreate]=useState(false);
- const [form,setForm]=useState({code:"",name:"",level:"1",parentId:"",accountClass:"ASSET",normalBalance:"DEBIT",detailMode:"NONE",isPostable:true});
- const request=useCallback(async(path:string,init:RequestInit={})=>{
-  const base=api.trim().replace(/\/$/,"");if(!base||!token.trim()||!company.trim())throw new Error("اطلاعات اتصال کامل نیست.");
-  const response=await fetch(`${base}/api/companies/${company}/accounts${path}`,{...init,headers:{"Content-Type":"application/json","Authorization":`Bearer ${token.trim()}`,...(init.headers||{})}});
-  if(!response.ok){const body=await response.json().catch(()=>null);throw new Error(body?.error||body?.title||`خطای سرور: ${response.status}`);}
-  return response.status===204?null:response.json();
- },[api,token,company]);
- const load=async()=>{setBusy(true);try{setAccounts(await request("") as Account[]);setMessage("فهرست حساب‌ها با موفقیت از API دریافت شد.");}catch(e){setMessage(e instanceof Error?e.message:"خطا در ارتباط با API");}finally{setBusy(false);}};
- const create=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);try{await request("",{method:"POST",body:JSON.stringify({...form,level:Number(form.level),parentId:form.parentId||null})});setShowCreate(false);setForm({code:"",name:"",level:"1",parentId:"",accountClass:"ASSET",normalBalance:"DEBIT",detailMode:"NONE",isPostable:true});await load();setMessage("حساب ایجاد و رویداد آن در دفتر حسابرسی ثبت شد.");}catch(e){setMessage(e instanceof Error?e.message:"ایجاد حساب ناموفق بود.");}finally{setBusy(false);}};
- const toggle=async(a:Account)=>{setBusy(true);try{await request(`/${a.id}`,{method:"PUT",body:JSON.stringify({name:a.name,isActive:!a.isActive})});await load();}catch(e){setMessage(e instanceof Error?e.message:"به‌روزرسانی ناموفق بود.");}finally{setBusy(false);}};
- const remove=async(a:Account)=>{if(!window.confirm(`حساب «${a.name}» حذف شود؟ فقط حساب بدون زیرحساب و گردش قابل حذف است.`))return;setBusy(true);try{await request(`/${a.id}`,{method:"DELETE"});await load();}catch(e){setMessage(e instanceof Error?e.message:"حذف حساب ناموفق بود.");}finally{setBusy(false);}};
- return <main className="shell" dir="rtl">
-  <header className="topbar"><div><div className="eyebrow">سامانه سازمانی</div><h1>سامانه مالی و جامع هوشمند</h1><p>هسته حسابداری و مدیریت کدینگ</p></div><span className="status">نسخه توسعه متصل به API</span></header>
-  <section className="notice"><strong>محدوده فعلی</strong><span>این بخش فقط مدیریت کدینگ را پوشش می‌دهد. ثبت سند و عملیات مالی هنوز فعال نشده‌اند. توکن فقط در حافظه همین صفحه نگهداری می‌شود.</span></section>
-  <section className="connection"><h2>اتصال به سرویس</h2><div className="connection-grid">
-   <label>نشانی پایه API<input value={api} onChange={e=>setApi(e.target.value)} placeholder="https://api.example.com" dir="ltr"/></label>
-   <label>شناسه شرکت (UUID)<input value={company} onChange={e=>setCompany(e.target.value)} placeholder="شناسه شرکت" dir="ltr"/></label>
-   <label>توکن دسترسی JWT<input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="Bearer token" dir="ltr" autoComplete="off"/></label>
-  </div><div className="toolbar"><button onClick={load} disabled={busy}>دریافت کدینگ</button><button className="secondary" onClick={()=>{setToken("");setAccounts([]);setMessage("توکن از حافظه صفحه پاک شد.");}}>قطع اتصال و پاک‌کردن توکن</button></div></section>
-  <section className="section-heading"><div><h2>درخت حساب‌ها</h2><p>حداکثر ۱۰ سطح؛ تفصیلی شناور مستقل از درخت حساب است.</p></div><button onClick={()=>setShowCreate(!showCreate)} disabled={busy}>ایجاد حساب جدید</button></section>
-  {showCreate&&<form className="create-form" onSubmit={create}>
-   <label>کد حساب<input required value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/></label>
-   <label>عنوان حساب<input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>
-   <label>سطح<select value={form.level} onChange={e=>setForm({...form,level:e.target.value})}>{Array.from({length:10},(_,i)=><option key={i+1} value={i+1}>{i+1}</option>)}</select></label>
-   <label>شناسه والد<input value={form.parentId} onChange={e=>setForm({...form,parentId:e.target.value})} placeholder="برای سطح اول خالی" dir="ltr"/></label>
-   <label>طبقه حساب<select value={form.accountClass} onChange={e=>setForm({...form,accountClass:e.target.value})}>{classes.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label>
-   <label>ماهیت<select value={form.normalBalance} onChange={e=>setForm({...form,normalBalance:e.target.value})}><option value="DEBIT">بدهکار</option><option value="CREDIT">بستانکار</option></select></label>
-   <label>نوع تفصیلی<select value={form.detailMode} onChange={e=>setForm({...form,detailMode:e.target.value})}><option value="NONE">ندارد</option><option value="FIXED">تفصیلی ثابت</option><option value="FLOATING">تفصیلی شناور</option></select></label>
-   <label className="check-label"><input type="checkbox" checked={form.isPostable} onChange={e=>setForm({...form,isPostable:e.target.checked})}/> حساب ثبت‌پذیر</label>
-   <div className="form-actions"><button disabled={busy}>ذخیره حساب</button><button type="button" className="secondary" onClick={()=>setShowCreate(false)}>انصراف</button></div>
-  </form>}
-  <div className="message" role="status">{message}</div>
-  <div className="table-wrap"><table><thead><tr><th>کد</th><th>عنوان</th><th>سطح</th><th>ماهیت</th><th>تفصیلی</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>
-   {accounts.map(a=><tr key={a.id}><td dir="ltr">{a.code}</td><td>{a.name}</td><td>{a.level}</td><td>{a.normalBalance==="DEBIT"?"بدهکار":"بستانکار"}</td><td>{a.detailMode==="FIXED"?"ثابت":a.detailMode==="FLOATING"?"شناور":"—"}</td><td>{a.isActive?"فعال":"غیرفعال"}</td><td className="actions"><button className="small secondary" disabled={busy} onClick={()=>toggle(a)}>{a.isActive?"غیرفعال‌سازی":"فعال‌سازی"}</button><button className="small danger" disabled={busy} onClick={()=>remove(a)}>حذف</button></td></tr>)}
-   {accounts.length===0&&<tr><td colSpan={7} className="empty">هنوز داده‌ای دریافت نشده است.</td></tr>}
-  </tbody></table></div><footer>اصل راهبردی: محاسبات قطعی و قابل ممیزی؛ هوش مصنوعی فقط با نظارت و مجوز انسانی.</footer>
- </main>;
+import { useMemo, useState } from "react";
+
+type ModuleKey = "overview" | "accounts" | "treasury" | "inventory" | "production" | "reports" | "audit";
+const modules: { key: ModuleKey; label: string; icon: string; status: string }[] = [
+  { key: "overview", label: "نمای کلی", icon: "◫", status: "نمایش" },
+  { key: "accounts", label: "کدینگ حساب‌ها", icon: "▤", status: "نمونه نمایشی" },
+  { key: "treasury", label: "خزانه و بانک", icon: "⇄", status: "در دست توسعه" },
+  { key: "inventory", label: "انبار و کالا", icon: "▦", status: "در دست توسعه" },
+  { key: "production", label: "تولید و بهای تمام‌شده", icon: "⚙", status: "در دست توسعه" },
+  { key: "reports", label: "گزارش‌های مدیریتی", icon: "▥", status: "در دست توسعه" },
+  { key: "audit", label: "حسابرسی و کنترل داخلی", icon: "✓", status: "در دست توسعه" },
+];
+const sampleAccounts = [
+  { code: "100", name: "دارایی‌های جاری", level: "کل", nature: "بدهکار", type: "گروه" },
+  { code: "110", name: "موجودی نقد و بانک", level: "معین", nature: "بدهکار", type: "گروه" },
+  { code: "11001", name: "صندوق ریالی", level: "تفصیلی", nature: "بدهکار", type: "ثابت" },
+  { code: "11002", name: "بانک‌های ریالی", level: "تفصیلی", nature: "بدهکار", type: "شناور" },
+  { code: "120", name: "حساب‌های دریافتنی", level: "معین", nature: "بدهکار", type: "گروه" },
+  { code: "200", name: "بدهی‌های جاری", level: "کل", nature: "بستانکار", type: "گروه" },
+  { code: "300", name: "حقوق مالکانه", level: "کل", nature: "بستانکار", type: "گروه" },
+  { code: "400", name: "درآمد عملیاتی", level: "کل", nature: "بستانکار", type: "گروه" },
+  { code: "500", name: "هزینه‌های عملیاتی", level: "کل", nature: "بدهکار", type: "گروه" },
+];
+const money = (n: number) => new Intl.NumberFormat("fa-IR").format(n) + " ریال";
+
+export default function App() {
+  const [active, setActive] = useState<ModuleKey>("overview");
+  const [query, setQuery] = useState("");
+  const [showInfo, setShowInfo] = useState(false);
+  const filteredAccounts = useMemo(() => sampleAccounts.filter(a => (a.code + a.name).includes(query.trim())), [query]);
+  const selected = modules.find(m => m.key === active)!;
+  return <div className="app" dir="rtl">
+    <aside className="sidebar">
+      <div className="brand"><div className="brand-mark">س</div><div><strong>سامانه مالی</strong><small>و جامع هوشمند</small></div></div>
+      <div className="side-caption">فضای کاری</div>
+      <nav>{modules.map(m => <button key={m.key} className={active === m.key ? "nav-item active" : "nav-item"} onClick={() => setActive(m.key)}><span className="nav-icon">{m.icon}</span><span>{m.label}</span>{m.key !== "overview" && m.key !== "accounts" && <i />}</button>)}</nav>
+      <div className="sidebar-bottom"><span className="live-dot" /> محیط نمایشی GitHub Pages <small>نسخه توسعه</small></div>
+    </aside>
+    <main className="main">
+      <header className="topbar"><div><div className="breadcrumb">سامانه مالی <span>/</span> {selected.label}</div><h1>{active === "overview" ? "داشبورد مدیریت مالی" : selected.label}</h1></div><div className="top-actions"><span className="period">دوره مالی: نمونه ۱۴۰۵</span><button className="help" onClick={() => setShowInfo(!showInfo)}>راهنمای وضعیت</button></div></header>
+      {showInfo && <div className="info-banner"><strong>شفافیت نسخه نمایشی:</strong> اطلاعات این صفحه ساختگی و صرفاً برای نمایش ظاهر و مسیرهای رابط کاربری است. این نسخه GitHub Pages به پایگاه داده یا API مالی متصل نیست و هیچ سند یا تراکنش واقعی ثبت نمی‌کند.</div>}
+      {active === "overview" && <><section className="welcome"><div><span className="eyebrow">نمای مدیریتی یکپارچه</span><h2>تصویر روشن‌تری از وضعیت مالی سازمان</h2><p>زیرساخت یکپارچه حسابداری، عملیات و تحلیل مدیریتی در حال ساخت است.</p></div><div className="welcome-symbol">₪</div></section>
+        <section className="metrics">
+          <article className="metric"><span>دارایی‌ها</span><strong>{money(128450000000)}</strong><small>عدد نمونه نمایشی</small></article>
+          <article className="metric"><span>بدهی‌ها</span><strong>{money(42600000000)}</strong><small>عدد نمونه نمایشی</small></article>
+          <article className="metric"><span>حقوق مالکانه</span><strong>{money(85850000000)}</strong><small>عدد نمونه نمایشی</small></article>
+          <article className="metric"><span>اسناد در انتظار</span><strong>۱۲</strong><small>شمارنده نمایشی</small></article>
+        </section>
+        <section className="content-grid"><article className="panel chart-panel"><div className="panel-head"><div><h3>روند نمونه درآمد و هزینه</h3><p>نمایش گرافیکی آزمایشی</p></div><span className="tag">۶ ماه اخیر</span></div><div className="chart"><div className="y-labels"><span>۱۰۰</span><span>۷۵</span><span>۵۰</span><span>۲۵</span><span>۰</span></div><div className="bars">{[["فروردین",48,28],["اردیبهشت",62,34],["خرداد",55,30],["تیر",78,43],["مرداد",68,39],["شهریور",88,48]].map(([month,a,b])=><div className="bar-group" key={String(month)}><div className="bar-pair"><i style={{height:a+"%"}}/><i style={{height:b+"%"}}/></div><small>{month}</small></div>)}</div></div><div className="legend"><span><i/> درآمد</span><span><i/> هزینه</span></div></article>
+        <article className="panel"><div className="panel-head"><div><h3>وضعیت اجزای سامانه</h3><p>بر اساس مرحله توسعه</p></div></div><div className="module-list">{modules.slice(1).map(m=><button key={m.key} onClick={()=>setActive(m.key)}><span className="module-symbol">{m.icon}</span><span>{m.label}</span><small>{m.status}</small></button>)}</div></article></section>
+        <section className="panel lower-panel"><div className="panel-head"><div><h3>اصول طراحی هسته مالی</h3><p>قواعدی که در ساخت سامانه رعایت می‌شوند</p></div></div><div className="principles"><span>محاسبات دقیق Decimal</span><span>دفترکل قابل ممیزی</span><span>تفکیک شرکت‌ها و دسترسی‌ها</span><span>تأیید انسانی عملیات حساس</span></div></section>
+      </>}
+      {active === "accounts" && <section className="panel account-panel"><div className="panel-head"><div><h3>ساختار کدینگ حساب‌ها</h3><p>نمونه ساختار درختی؛ حداکثر ۱۰ سطح حساب</p></div><span className="tag">داده نمونه</span></div><div className="search-row"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="جست‌وجو در کد یا عنوان حساب..."/><span>{filteredAccounts.length} حساب نمونه</span></div><div className="table-wrap"><table><thead><tr><th>کد حساب</th><th>عنوان حساب</th><th>سطح</th><th>ماهیت</th><th>نوع تفصیلی</th></tr></thead><tbody>{filteredAccounts.map(a=><tr key={a.code}><td className="code">{a.code}</td><td>{a.name}</td><td>{a.level}</td><td>{a.nature}</td><td>{a.type}</td></tr>)}</tbody></table></div><div className="info-banner">این فهرست فقط داده نمونه است. سرویس واقعی کدینگ در حال توسعه و اتصال به API مستقل .NET است.</div></section>}
+      {active !== "overview" && active !== "accounts" && <section className="panel coming"><div className="coming-icon">{selected.icon}</div><h2>ماژول {selected.label}</h2><span className="tag">در دست توسعه</span><p>ساختار این بخش در نقشه راه سامانه قرار دارد. تا زمان تکمیل منطق کسب‌وکار، API، کنترل دسترسی و آزمون‌ها، عملیات واقعی در این قسمت فعال نیست.</p><button onClick={()=>setActive("overview")}>بازگشت به داشبورد</button></section>}
+      <footer className="footer"><span>سامانه مالی و جامع هوشمند</span><span>نسخه نمایشی مستقل از Floot · GitHub Pages</span></footer>
+    </main>
+  </div>;
 }
