@@ -138,7 +138,7 @@ public static class CarryForwardReconciliationEndpoints
         var isBalanced = expectedDebitTotal == expectedCreditTotal &&
                          actualDebitTotal == actualCreditTotal;
         var canReconcile = status == "POSTED" && sourceStatus == "LOCKED" &&
-                           targetStatus == "OPEN" && targetStart == sourceEnd.AddDays(1) &&
+                           targetStart == sourceEnd.AddDays(1) &&
                            isBalanced && matched && lines.Count > 0;
         await tx.CommitAsync(ct);
         return Results.Ok(new {
