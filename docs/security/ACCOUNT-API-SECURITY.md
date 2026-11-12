@@ -7,7 +7,7 @@ The chart-of-accounts API is available under:
 - `GET /api/companies/{companyId}/accounts`
 - `POST /api/companies/{companyId}/accounts`
 - `PUT /api/companies/{companyId}/accounts/{accountId}` — currently changes name and active status only
-- `DELETE /api/companies/{companyId}/accounts/{accountId}` — only when no child accounts and no journal-line history exist
+- `DELETE /api/companies/{companyId}/accounts/{accountId}` — only when no child accounts and no journal-line history exist\n- `GET /api/companies/{companyId}/dimensions`\n- `POST /api/companies/{companyId}/dimensions`\n- `PATCH /api/companies/{companyId}/dimensions/{dimensionId}/active`
 
 All endpoints require a JWT bearer token. Routes are not registered unless an authentication signing key is configured; the API therefore fails closed for account operations when authentication is not configured.
 
@@ -25,7 +25,7 @@ The current API validates issuer, audience, signing key, token expiry, and the J
 
 A trusted identity provider must issue these tokens. This project does not yet implement user registration, password login, refresh-token rotation, MFA, role/permission administration, or key rotation. Do not create production tokens manually or expose the signing key to the browser.
 
-## Tenant isolation and database role
+## Company membership authorization\n\nEvery account and analytical-dimension endpoint now requires an active row in `company_memberships` matching the validated JWT `tenant_id`, the route `companyId`, and the JWT `sub` user UUID. A tenant claim alone no longer grants access to every company. Membership rows are provisioned by a trusted administrative process; there is intentionally no self-service membership endpoint. `role_code` is stored for the next RBAC stage, but fine-grained role permissions are not yet enforced.\n\nThe migration `database/migrations/0002_company_memberships.sql` creates this table. Before using the endpoints, an administrator must create a company membership for each authorized user.\n\n## Tenant isolation and database role
 
 Each account request opens a database transaction and sets `app.tenant_id` with transaction-local `set_config(..., true)`. PostgreSQL row-level security policies provide defense in depth.
 
