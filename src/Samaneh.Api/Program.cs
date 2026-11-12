@@ -6,8 +6,14 @@ using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHealthChecks();
 var connectionString = builder.Configuration.GetConnectionString("Postgres");
-if (!string.IsNullOrWhiteSpace(connectionString))
-    builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
+var databaseConfigured = !string.IsNullOrWhiteSpace(connectionString);
+// Register the service even in a database-less test/preview host so Minimal API
+// can classify NpgsqlDataSource parameters as services, not inferred request bodies.
+// The loopback fallback is never a production default and health checks report it unavailable.
+var effectiveConnectionString = databaseConfigured
+    ? connectionString!
+    : "Host=127.0.0.1;Port=1;Database=samaneh_unconfigured;Username=unconfigured;Timeout=1;Command Timeout=1";
+builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(effectiveConnectionString));
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 if (allowedOrigins.Length > 0)
@@ -41,7 +47,8 @@ app.MapHealthChecks("/health");
 app.MapGet("/health/db", async (IServiceProvider sp, CancellationToken ct) =>
 {
     var ds = sp.GetService<NpgsqlDataSource>();
-    if (ds is null) return Results.Problem(title: "Database is not configured", statusCode: 503);
+    if (!databaseConfigured || ds is null)
+        return Results.Problem(title: "Database is not configured", statusCode: 503);
     try {
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var cmd = new NpgsqlCommand("SELECT 1", c);
