@@ -328,6 +328,7 @@ if (!string.IsNullOrWhiteSpace(key))
     });
 
     JournalEndpoints.Map(app);
+    LedgerEndpoints.Map(app);
 }
 if (allowedOrigins.Length > 0) app.UseCors();
 if (!string.IsNullOrWhiteSpace(key)) { app.UseAuthentication(); app.UseAuthorization(); }
