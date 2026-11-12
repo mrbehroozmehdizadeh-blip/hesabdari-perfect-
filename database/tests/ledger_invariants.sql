@@ -19,6 +19,9 @@ DECLARE
     v_second_journal uuid := gen_random_uuid();
     v_second_line_a uuid := gen_random_uuid();
     v_second_line_b uuid := gen_random_uuid();
+    v_bad_reversal uuid := gen_random_uuid();
+    v_bad_reversal_line_a uuid := gen_random_uuid();
+    v_bad_reversal_line_b uuid := gen_random_uuid();
     v_rejected boolean;
 BEGIN
     INSERT INTO tenants(id,tenant_code,display_name)
@@ -121,6 +124,52 @@ BEGIN
     END;
     IF NOT v_rejected THEN
         RAISE EXCEPTION 'Posting completeness test failed: incomplete journal unexpectedly posted';
+    END IF;
+
+    -- The database must reject a reversal whose lines do not exactly invert its source.
+    INSERT INTO journal_entries(id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,
+                                currency_code,entry_status,description,idempotency_key,created_by,
+                                reversal_of_journal_id)
+    VALUES(v_bad_reversal,v_tenant,v_company,v_period,'CI-BAD-REVERSAL',DATE '2026-01-04',
+           'USD','DRAFT','Bad reversal','ci-bad-reversal',v_creator,v_journal);
+    INSERT INTO journal_lines(id,tenant_id,company_id,journal_entry_id,line_number,account_id,debit_amount,credit_amount)
+    VALUES
+      (v_bad_reversal_line_a,v_tenant,v_company,v_bad_reversal,1,v_account_debit,1,0),
+      (v_bad_reversal_line_b,v_tenant,v_company,v_bad_reversal,2,v_account_credit,0,1);
+    UPDATE journal_entries
+       SET entry_status='PENDING',submitted_by=v_creator,submitted_at=now()
+     WHERE id=v_bad_reversal;
+    v_rejected := false;
+    BEGIN
+        UPDATE journal_entries
+           SET entry_status='APPROVED',approved_by=v_approver,approved_at=now()
+         WHERE id=v_bad_reversal;
+    EXCEPTION WHEN OTHERS THEN
+        v_rejected := true;
+    END;
+    IF NOT v_rejected THEN
+        RAISE EXCEPTION 'Reversal integrity test failed: incorrect reversal lines unexpectedly approved';
+    END IF;
+
+    -- Even a complete ledger cannot be finalized by the creator.
+    INSERT INTO general_ledger_lines
+        (tenant_id,company_id,fiscal_period_id,journal_entry_id,journal_line_id,
+         account_id,entry_date,currency_code,debit_amount,credit_amount,posted_by)
+    SELECT l.tenant_id,l.company_id,v_period,j.id,l.id,l.account_id,j.entry_date,
+           j.currency_code,l.debit_amount,l.credit_amount,v_creator
+      FROM journal_lines l JOIN journal_entries j
+        ON j.tenant_id=l.tenant_id AND j.company_id=l.company_id AND j.id=l.journal_entry_id
+     WHERE j.id=v_second_journal AND l.id=v_second_line_b;
+
+    v_rejected := false;
+    BEGIN
+        UPDATE journal_entries SET entry_status='POSTED',posted_by=v_creator,posted_at=now()
+         WHERE id=v_second_journal;
+    EXCEPTION WHEN OTHERS THEN
+        v_rejected := true;
+    END;
+    IF NOT v_rejected THEN
+        RAISE EXCEPTION 'Posting separation test failed: creator unexpectedly posted their own journal';
     END IF;
 END;
 $test$;
