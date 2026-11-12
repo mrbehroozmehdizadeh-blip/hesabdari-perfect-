@@ -37,3 +37,14 @@
 12. استقرار و تحویل
 
 هر مرحله باید شواهد آزمون و معیار پذیرش مستقل داشته باشد. وجود صفحه یا مستند به‌تنهایی به معنی تکمیل قابلیت نیست.
+
+
+## GitHub Pages preview
+
+The repository includes a **static, read-only UI preview** deployed from `web/` by GitHub Actions. It is separate from Floot and does not connect to PostgreSQL or the ASP.NET Core API. All financial figures shown in this preview are illustrative sample data only.
+
+After the first successful Pages deployment, the preview URL is:
+
+`https://mrbehroozmehdizadeh-blip.github.io/hesabdari-perfect-/`
+
+GitHub repository settings may require enabling **Settings → Pages → Build and deployment → Source: GitHub Actions** once. The deployment workflow is `.github/workflows/pages.yml`.
