@@ -16,6 +16,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: samaneh_ci
+          POSTGRES_PASSWORD: ci-test-password
+          POSTGRES_DB: samaneh_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U samaneh_ci -d samaneh_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - name: Setup .NET 10
@@ -28,3 +42,9 @@ jobs:
         run: dotnet build Samaneh.sln --configuration Release --no-restore
       - name: Test
         run: dotnet test Samaneh.sln --configuration Release --no-build
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Validate database migration against PostgreSQL 18
+        env:
+          PGPASSWORD: ci-test-password
+        run: psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0001_financial_core.sql
