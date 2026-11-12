@@ -30,12 +30,19 @@ public static class YearEndClosingCalculator
             throw new ArgumentException("Retained earnings account is required.", nameof(retainedEarningsAccountId));
 
         var lines = new List<YearEndClosingLine>();
+        var seenAccounts = new HashSet<Guid>();
         decimal netDebit = 0m;
 
         foreach (var balance in balances.OrderBy(x => x.AccountCode, StringComparer.Ordinal))
         {
-            if (balance.AccountId == Guid.Empty)
-                throw new ArgumentException("Temporary account ID is required.", nameof(balances));
+            if (balance is null || balance.AccountId == Guid.Empty)
+                throw new ArgumentException("Temporary account and ID are required.", nameof(balances));
+            if (!seenAccounts.Add(balance.AccountId))
+                throw new ArgumentException("A temporary account may appear only once.", nameof(balances));
+            if (balance.AccountId == retainedEarningsAccountId)
+                throw new ArgumentException("Retained earnings must be a separate equity account.", nameof(retainedEarningsAccountId));
+            if (string.IsNullOrWhiteSpace(balance.AccountCode))
+                throw new ArgumentException("Temporary account code is required.", nameof(balances));
             if (balance.DebitNet == 0m)
                 continue;
 
