@@ -172,7 +172,7 @@ CREATE INDEX ix_audit_events_tenant_time ON audit_events(tenant_id, occurred_at 
 CREATE OR REPLACE FUNCTION validate_account_hierarchy()
 RETURNS trigger
 LANGUAGE plpgsql
-AS $
+AS $function$
 DECLARE
     parent_level smallint;
     parent_is_postable boolean;
@@ -203,7 +203,7 @@ BEGIN
 
     RETURN NEW;
 END;
-$;
+$function$;
 
 CREATE TRIGGER trg_validate_account_hierarchy
 BEFORE INSERT OR UPDATE OF tenant_id, company_id, parent_account_id, account_level
@@ -215,7 +215,7 @@ EXECUTE FUNCTION validate_account_hierarchy();
 CREATE OR REPLACE FUNCTION protect_account_parent_from_invalid_update()
 RETURNS trigger
 LANGUAGE plpgsql
-AS $
+AS $function$
 BEGIN
     IF EXISTS (
         SELECT 1
@@ -240,7 +240,7 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$;
+$function$;
 
 CREATE TRIGGER trg_protect_account_parent
 BEFORE UPDATE OF account_level, is_postable
