@@ -117,6 +117,22 @@ public static class YearEndClosingEndpoints
                 });
         }
 
+        await using (var unfinished = new NpgsqlCommand("""
+            SELECT EXISTS(SELECT 1 FROM journal_entries
+             WHERE tenant_id=@tenant AND company_id=@company
+               AND fiscal_period_id=@period
+               AND entry_status NOT IN ('POSTED','REVERSED'))
+            """, c, tx))
+        {
+            unfinished.Parameters.AddWithValue("tenant", tenant);
+            unfinished.Parameters.AddWithValue("company", companyId);
+            unfinished.Parameters.AddWithValue("period", input.FiscalPeriodId);
+            if ((bool)(await unfinished.ExecuteScalarAsync(ct) ?? false))
+                return Results.Conflict(new {
+                    error = "پیش از تهیه سند بستن، همه اسناد عادی دوره باید تعیین تکلیف و ثبت قطعی شوند؛ اسناد پیش‌نویس یا در انتظار تأیید باقی مانده‌اند."
+                });
+        }
+
         var temporaryBalances = new List<TemporaryAccountBalance>();
         await using (var balances = new NpgsqlCommand("""
             SELECT a.id,a.account_code,a.account_name,
