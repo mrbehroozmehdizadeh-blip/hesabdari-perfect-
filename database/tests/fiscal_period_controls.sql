@@ -103,6 +103,21 @@ BEGIN
         RAISE EXCEPTION 'Reopening a closed period must be rejected';
     END IF;
 
+    rejected := false;
+    BEGIN
+        INSERT INTO journal_entries
+            (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+             idempotency_key,created_by,journal_type,opening_source_period_id)
+        VALUES
+            (gen_random_uuid(),tenant_key,company_key,next_period_id,'CARRY-CI-UNLOCKED',DATE '2027-01-01',
+             'EUR','CARRY-CI-KEY-UNLOCKED',gen_random_uuid(),'OPENING',period_key);
+    EXCEPTION WHEN raise_exception THEN
+        rejected := true;
+    END;
+    IF NOT rejected THEN
+        RAISE EXCEPTION 'A CLOSED but not LOCKED source period must not be carried forward';
+    END IF;
+
     UPDATE fiscal_periods SET period_status='LOCKED'
      WHERE tenant_id=tenant_key AND company_id=company_key AND id=period_key;
 
