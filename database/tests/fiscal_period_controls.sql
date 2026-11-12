@@ -92,6 +92,7 @@ BEGIN
         RAISE EXCEPTION 'Expected period to close';
     END IF;
 
+    rejected := false;
     BEGIN
         UPDATE fiscal_periods SET period_status='OPEN'
          WHERE tenant_id=tenant_key AND company_id=company_key AND id=period_key;
@@ -160,6 +161,24 @@ BEGIN
     END;
     IF NOT rejected THEN
         RAISE EXCEPTION 'Carry-forward target period must be immediately contiguous with source';
+    END IF;
+
+    UPDATE fiscal_periods SET period_status='CLOSED'
+     WHERE tenant_id=tenant_key AND company_id=company_key AND id=later_period_id;
+
+    rejected := false;
+    BEGIN
+        INSERT INTO journal_entries
+            (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+             idempotency_key,created_by,journal_type,opening_source_period_id)
+        VALUES
+            (gen_random_uuid(),tenant_key,company_key,later_period_id,'CARRY-CI-CLOSED-TARGET',DATE '2028-01-01',
+             'EUR','CARRY-CI-KEY-CLOSED-TARGET',gen_random_uuid(),'OPENING',period_key);
+    EXCEPTION WHEN raise_exception THEN
+        rejected := true;
+    END;
+    IF NOT rejected THEN
+        RAISE EXCEPTION 'A carry-forward into a non-OPEN target period must be rejected';
     END IF;
 
     rejected := false;
