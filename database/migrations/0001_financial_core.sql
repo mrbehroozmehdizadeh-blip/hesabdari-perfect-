@@ -211,6 +211,43 @@ ON accounts
 FOR EACH ROW
 EXECUTE FUNCTION validate_account_hierarchy();
 
+-- A parent with children must remain a non-postable grouping node at the correct level.
+CREATE OR REPLACE FUNCTION protect_account_parent_from_invalid_update()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $
+BEGIN
+    IF EXISTS (
+        SELECT 1
+          FROM accounts child
+         WHERE child.tenant_id = OLD.tenant_id
+           AND child.company_id = OLD.company_id
+           AND child.parent_account_id = OLD.id
+    ) THEN
+        IF NEW.is_postable THEN
+            RAISE EXCEPTION 'An account with children cannot be changed into a posting account';
+        END IF;
+        IF EXISTS (
+            SELECT 1
+              FROM accounts child
+             WHERE child.tenant_id = OLD.tenant_id
+               AND child.company_id = OLD.company_id
+               AND child.parent_account_id = OLD.id
+               AND child.account_level <> NEW.account_level + 1
+        ) THEN
+            RAISE EXCEPTION 'Changing this account level would invalidate child account levels';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$;
+
+CREATE TRIGGER trg_protect_account_parent
+BEFORE UPDATE OF account_level, is_postable
+ON accounts
+FOR EACH ROW
+EXECUTE FUNCTION protect_account_parent_from_invalid_update();
+
 -- Tenant isolation is enforced in PostgreSQL as defense in depth.
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fiscal_periods ENABLE ROW LEVEL SECURITY;
