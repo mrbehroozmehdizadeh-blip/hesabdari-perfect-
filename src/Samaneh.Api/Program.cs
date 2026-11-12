@@ -113,6 +113,96 @@ if (!string.IsNullOrWhiteSpace(key))
         await tx.CommitAsync(ct);
         return Results.Created($"/api/companies/{companyId}/accounts/{id}",new{id,code,name});
     });
+    group.MapPut("/{accountId:guid}", async Task<IResult> (Guid companyId, Guid accountId, UpdateAccount input, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
+    {
+        if (!Identity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
+        var name = input.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return Results.ValidationProblem(new Dictionary<string,string[]>{{"name",["نام حساب الزامی است."]}});
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await Tenant(c, tx, tenant, ct);
+        await using (var update = new NpgsqlCommand("""
+            UPDATE accounts SET account_name=@name, is_active=@active
+             WHERE tenant_id=@tenant AND company_id=@company AND id=@id
+            RETURNING account_code
+            """, c, tx))
+        {
+            update.Parameters.AddWithValue("name", name);
+            update.Parameters.AddWithValue("active", input.IsActive);
+            update.Parameters.AddWithValue("tenant", tenant);
+            update.Parameters.AddWithValue("company", companyId);
+            update.Parameters.AddWithValue("id", accountId);
+            var code = await update.ExecuteScalarAsync(ct) as string;
+            if (code is null) return Results.NotFound();
+            await using var audit = new NpgsqlCommand("""
+                INSERT INTO audit_events(tenant_id,company_id,actor_id,event_type,entity_type,entity_id,payload)
+                VALUES(@tenant,@company,@actor,'ACCOUNT_UPDATED','ACCOUNT',@id,
+                       jsonb_build_object('name',@name,'isActive',@active))
+                """, c, tx);
+            audit.Parameters.AddWithValue("tenant", tenant); audit.Parameters.AddWithValue("company", companyId);
+            audit.Parameters.AddWithValue("actor", actor); audit.Parameters.AddWithValue("id", accountId);
+            audit.Parameters.AddWithValue("name", name); audit.Parameters.AddWithValue("active", input.IsActive);
+            await audit.ExecuteNonQueryAsync(ct);
+            await tx.CommitAsync(ct);
+            return Results.Ok(new { id = accountId, code, name, isActive = input.IsActive });
+        }
+    });
+
+    group.MapDelete("/{accountId:guid}", async Task<IResult> (Guid companyId, Guid accountId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
+    {
+        if (!Identity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await Tenant(c, tx, tenant, ct);
+        await using (var lockAccount = new NpgsqlCommand("""
+            SELECT account_code FROM accounts
+             WHERE tenant_id=@tenant AND company_id=@company AND id=@id
+             FOR UPDATE
+            """, c, tx))
+        {
+            lockAccount.Parameters.AddWithValue("tenant", tenant);
+            lockAccount.Parameters.AddWithValue("company", companyId);
+            lockAccount.Parameters.AddWithValue("id", accountId);
+            var code = await lockAccount.ExecuteScalarAsync(ct) as string;
+            if (code is null) return Results.NotFound();
+
+            await using var guard = new NpgsqlCommand("""
+                SELECT
+                  EXISTS(SELECT 1 FROM accounts WHERE tenant_id=@tenant AND company_id=@company AND parent_account_id=@id),
+                  EXISTS(SELECT 1 FROM journal_lines WHERE tenant_id=@tenant AND company_id=@company AND account_id=@id)
+                """, c, tx);
+            guard.Parameters.AddWithValue("tenant", tenant);
+            guard.Parameters.AddWithValue("company", companyId);
+            guard.Parameters.AddWithValue("id", accountId);
+            await using var reader = await guard.ExecuteReaderAsync(ct);
+            await reader.ReadAsync(ct);
+            var hasChildren = reader.GetBoolean(0);
+            var hasTransactions = reader.GetBoolean(1);
+            await reader.CloseAsync();
+            if (hasChildren || hasTransactions)
+                return Results.Conflict(new { error = "حساب دارای زیرحساب یا سابقه گردش است و قابل حذف نیست؛ آن را غیرفعال کنید." });
+
+            await using var delete = new NpgsqlCommand(
+                "DELETE FROM accounts WHERE tenant_id=@tenant AND company_id=@company AND id=@id", c, tx);
+            delete.Parameters.AddWithValue("tenant", tenant);
+            delete.Parameters.AddWithValue("company", companyId);
+            delete.Parameters.AddWithValue("id", accountId);
+            await delete.ExecuteNonQueryAsync(ct);
+
+            await using var audit = new NpgsqlCommand("""
+                INSERT INTO audit_events(tenant_id,company_id,actor_id,event_type,entity_type,entity_id,payload)
+                VALUES(@tenant,@company,@actor,'ACCOUNT_DELETED','ACCOUNT',@id,jsonb_build_object('code',@code))
+                """, c, tx);
+            audit.Parameters.AddWithValue("tenant", tenant); audit.Parameters.AddWithValue("company", companyId);
+            audit.Parameters.AddWithValue("actor", actor); audit.Parameters.AddWithValue("id", accountId);
+            audit.Parameters.AddWithValue("code", code);
+            await audit.ExecuteNonQueryAsync(ct);
+            await tx.CommitAsync(ct);
+            return Results.NoContent();
+        }
+    });
+
 }
 app.UseAuthentication(); app.UseAuthorization();
 app.Run();
@@ -126,5 +216,5 @@ static async Task Tenant(NpgsqlConnection c,NpgsqlTransaction tx,Guid id,Cancell
     await using var cmd=new NpgsqlCommand("SELECT set_config('app.tenant_id',@tenant,true)",c,tx);
     cmd.Parameters.AddWithValue("tenant",id.ToString()); await cmd.ExecuteNonQueryAsync(ct);
 }
-public sealed record CreateAccount(string? Code,string? Name,int Level,Guid? ParentId,string? AccountClass,string? NormalBalance,string? DetailMode,bool IsPostable);
+public sealed record CreateAccount(string? Code,string? Name,int Level,Guid? ParentId,string? AccountClass,string? NormalBalance,string? DetailMode,bool IsPostable);\npublic sealed record UpdateAccount(string? Name, bool IsActive);
 public partial class Program { }
