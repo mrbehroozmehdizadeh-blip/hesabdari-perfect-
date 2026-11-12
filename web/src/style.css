@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+
+:root { font-family: Vazirmatn, Tahoma, sans-serif; color: #172b3a; background: #f3f6f8; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+.shell { max-width: 1180px; margin: 0 auto; padding: 36px 24px 28px; }
+.topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 30px; color: #fff; border-radius: 22px; background: linear-gradient(120deg, #10243a, #1e5261); box-shadow: 0 14px 36px #15394b20; }
+.eyebrow { color: #a8d5d5; font-size: 13px; font-weight: 600; }
+h1 { margin: 8px 0; font-size: clamp(23px, 4vw, 34px); }
+.topbar p { margin: 0; color: #d2e1e7; }
+.status { white-space: nowrap; padding: 8px 12px; border: 1px solid #8db7b6; border-radius: 999px; color: #e2f3ef; font-size: 12px; }
+.notice { display: flex; gap: 12px; align-items: baseline; margin: 22px 0 34px; padding: 15px 18px; background: #fff7e8; border: 1px solid #f0dfbd; border-radius: 12px; color: #69522b; font-size: 13px; }
+.section-heading { display: flex; justify-content: space-between; align-items: end; margin-bottom: 16px; }
+h2 { margin: 0; font-size: 21px; }
+.section-heading p { margin: 5px 0 0; color: #73818a; font-size: 13px; }
+.module-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.module { min-height: 170px; padding: 18px; background: white; border: 1px solid #e5ebee; border-radius: 15px; box-shadow: 0 5px 18px #1a34400a; }
+.module-number { color: #3d7880; font-size: 12px; font-weight: 800; }
+.module h3 { margin: 12px 0 6px; font-size: 16px; }
+.module p { min-height: 40px; margin: 0 0 14px; color: #75838b; font-size: 12px; line-height: 1.8; }
+.planned { color: #647783; font-size: 11px; }
+footer { margin-top: 30px; padding-top: 18px; border-top: 1px solid #dce4e8; color: #6b7b84; font-size: 12px; }
+@media (max-width: 900px) { .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .shell { padding: 16px 12px; } .topbar { display: block; padding: 22px; } .status { display: inline-block; margin-top: 16px; } .notice { display: block; line-height: 1.9; } .notice strong { display: block; } .module-grid { grid-template-columns: 1fr; } .module { min-height: auto; } }
