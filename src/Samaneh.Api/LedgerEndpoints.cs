@@ -75,8 +75,8 @@ public static class LedgerEndpoints
 
         group.MapGet("/accounts/{accountId:guid}/activity", async Task<IResult> (
             Guid companyId, Guid accountId, DateOnly? fromDate, DateOnly? toDate,
-            Guid? fiscalPeriodId, int page, int pageSize,
-            ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
+            Guid? fiscalPeriodId, ClaimsPrincipal user, NpgsqlDataSource? ds,
+            CancellationToken ct, int page = 1, int pageSize = 100) =>
         {
             if (!Identity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
             if (fromDate.HasValue && toDate.HasValue && fromDate.Value > toDate.Value)
