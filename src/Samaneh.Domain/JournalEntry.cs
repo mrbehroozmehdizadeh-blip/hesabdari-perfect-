@@ -1,8 +1,12 @@
 namespace Samaneh.Domain;
 
-public sealed record JournalLine(string AccountCode, Money Debit, Money Credit)
+public sealed record JournalLine
 {
-    public JournalLine(string accountCode, Money debit, Money credit) : this()
+    public string AccountCode { get; }
+    public Money Debit { get; }
+    public Money Credit { get; }
+
+    public JournalLine(string accountCode, Money debit, Money credit)
     {
         if (string.IsNullOrWhiteSpace(accountCode))
             throw new ArgumentException("Account code is required.", nameof(accountCode));
@@ -12,6 +16,7 @@ public sealed record JournalLine(string AccountCode, Money Debit, Money Credit)
             throw new InvalidOperationException("Debit and credit currencies must match.");
         if (debit.Amount > 0m && credit.Amount > 0m)
             throw new InvalidOperationException("A journal line cannot have both debit and credit amounts.");
+
         AccountCode = accountCode;
         Debit = debit;
         Credit = credit;
