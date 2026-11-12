@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Samaneh.Api", "src\Samaneh.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Samaneh.Domain", "src\Samaneh.Domain\Samaneh.Domain.csproj", "{B1D85A83-46E3-4026-9F24-59D3EEA10F22}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Samaneh.Domain.Tests", "tests\Samaneh.Domain.Tests\Samaneh.Domain.Tests.csproj", "{C2E96B94-57F4-4137-A05B-6AE4FFB21F33}"
+EndProject
 Global
   GlobalSection(SolutionConfigurationPlatforms) = preSolution
     Debug|Any CPU = Debug|Any CPU
@@ -20,5 +22,9 @@ Global
     {B1D85A83-46E3-4026-9F24-59D3EEA10F22}.Debug|Any CPU.Build.0 = Debug|Any CPU
     {B1D85A83-46E3-4026-9F24-59D3EEA10F22}.Release|Any CPU.ActiveCfg = Release|Any CPU
     {B1D85A83-46E3-4026-9F24-59D3EEA10F22}.Release|Any CPU.Build.0 = Release|Any CPU
+    {C2E96B94-57F4-4137-A05B-6AE4FFB21F33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+    {C2E96B94-57F4-4137-A05B-6AE4FFB21F33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+    {C2E96B94-57F4-4137-A05B-6AE4FFB21F33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+    {C2E96B94-57F4-4137-A05B-6AE4FFB21F33}.Release|Any CPU.Build.0 = Release|Any CPU
   EndGlobalSection
 EndGlobal
