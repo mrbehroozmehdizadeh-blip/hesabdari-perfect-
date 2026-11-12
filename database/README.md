@@ -44,3 +44,9 @@ Use a non-owner application database role without BYPASSRLS. The table owner and
 - FX valuation, fine-grained RBAC administration, production role hardening, and audit completeness remain required controls before production.
 - Every tenant-scoped query must use the authenticated tenant context; never accept tenant identity from an untrusted request body as authorization.
 - Company-scoped API access additionally requires an active `company_memberships` row for the authenticated user, tenant, and company. Membership provisioning is administrative; `role_code` is reserved for upcoming fine-grained RBAC enforcement.
+
+## Local Docker migration runner
+
+The root `docker-compose.yml` includes a one-shot `migrate` service for a fresh local development volume. It creates `public.schema_migrations`, applies numbered SQL files in filename order, and records each successfully completed file. The SQL migration files themselves are transactional. This local runner is intentionally separate from the CI validation database and is not a production migration orchestrator.
+
+The local Compose database uses a simplified development credential model. Do not copy its database role or exposed ports into a production deployment. Production must use a dedicated non-owner role without `BYPASSRLS`, explicit grants, verified `FORCE ROW LEVEL SECURITY` coverage, secrets management, backups, restore rehearsal and a reviewed migration plan.
