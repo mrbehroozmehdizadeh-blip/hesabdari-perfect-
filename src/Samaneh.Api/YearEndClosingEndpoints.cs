@@ -151,12 +151,13 @@ public static class YearEndClosingEndpoints
             }
         }
 
-        if (closingLines.Count == 0 || netDebit == 0m)
-            return Results.Conflict(new { error = "مانده خالص حساب‌های درآمد و هزینه صفر است؛ سند بستن خودکار لازم نیست یا باید طبقه‌بندی حساب‌ها بررسی شود." });
+        if (closingLines.Count == 0)
+            return Results.Conflict(new { error = "برای این دوره مانده‌ای در حساب‌های درآمد یا هزینه وجود ندارد." });
 
-        closingLines.Add(netDebit > 0m
-            ? new ClosingLine(input.RetainedEarningsAccountId, netDebit, 0m, "انتقال زیان خالص دوره به سود و زیان انباشته")
-            : new ClosingLine(input.RetainedEarningsAccountId, 0m, -netDebit, "انتقال سود خالص دوره به سود و زیان انباشته"));
+        if (netDebit > 0m)
+            closingLines.Add(new ClosingLine(input.RetainedEarningsAccountId, netDebit, 0m, "انتقال زیان خالص دوره به سود و زیان انباشته"));
+        else if (netDebit < 0m)
+            closingLines.Add(new ClosingLine(input.RetainedEarningsAccountId, 0m, -netDebit, "انتقال سود خالص دوره به سود و زیان انباشته"));
 
         var journalId = Guid.NewGuid();
         await using (var insert = new NpgsqlCommand("""
