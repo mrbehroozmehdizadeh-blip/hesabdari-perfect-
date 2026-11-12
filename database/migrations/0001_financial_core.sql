@@ -168,6 +168,49 @@ CREATE INDEX ix_journal_entries_status ON journal_entries(tenant_id, company_id,
 CREATE INDEX ix_journal_lines_account ON journal_lines(tenant_id, company_id, account_id);
 CREATE INDEX ix_audit_events_tenant_time ON audit_events(tenant_id, occurred_at DESC);
 
+-- Enforce immediate parent level and prevent posting accounts from becoming parents.
+CREATE OR REPLACE FUNCTION validate_account_hierarchy()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $
+DECLARE
+    parent_level smallint;
+    parent_is_postable boolean;
+BEGIN
+    IF NEW.account_level = 1 THEN
+        IF NEW.parent_account_id IS NOT NULL THEN
+            RAISE EXCEPTION 'Level-one accounts cannot have a parent';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    SELECT account_level, is_postable
+      INTO parent_level, parent_is_postable
+      FROM accounts
+     WHERE tenant_id = NEW.tenant_id
+       AND company_id = NEW.company_id
+       AND id = NEW.parent_account_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Parent account does not exist in the same company';
+    END IF;
+    IF parent_level <> NEW.account_level - 1 THEN
+        RAISE EXCEPTION 'Parent account level must be exactly one less than child level';
+    END IF;
+    IF parent_is_postable THEN
+        RAISE EXCEPTION 'A posting account cannot have child accounts';
+    END IF;
+
+    RETURN NEW;
+END;
+$;
+
+CREATE TRIGGER trg_validate_account_hierarchy
+BEFORE INSERT OR UPDATE OF tenant_id, company_id, parent_account_id, account_level
+ON accounts
+FOR EACH ROW
+EXECUTE FUNCTION validate_account_hierarchy();
+
 -- Tenant isolation is enforced in PostgreSQL as defense in depth.
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fiscal_periods ENABLE ROW LEVEL SECURITY;
