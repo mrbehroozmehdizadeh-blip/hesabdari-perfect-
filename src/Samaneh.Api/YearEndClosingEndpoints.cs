@@ -2,7 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Npgsql;
+using Npgsql;\nusing Samaneh.Domain;
 
 public static class YearEndClosingEndpoints
 {
@@ -117,8 +117,7 @@ public static class YearEndClosingEndpoints
                 });
         }
 
-        var closingLines = new List<ClosingLine>();
-        decimal netDebit = 0m;
+        var temporaryBalances = new List<TemporaryAccountBalance>();
         await using (var balances = new NpgsqlCommand("""
             SELECT a.id,a.account_code,a.account_name,
                    sum(gl.debit_amount-gl.credit_amount) AS debit_net
@@ -139,25 +138,16 @@ public static class YearEndClosingEndpoints
             balances.Parameters.AddWithValue("period", input.FiscalPeriodId);
             await using var reader = await balances.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
-            {
-                var accountId = reader.GetGuid(0);
-                var code = reader.GetString(1);
-                var name = reader.GetString(2);
-                var balance = reader.GetDecimal(3);
-                netDebit += balance;
-                closingLines.Add(balance > 0m
-                    ? new ClosingLine(accountId, 0m, balance, $"بستن حساب {code} - {name}")
-                    : new ClosingLine(accountId, -balance, 0m, $"بستن حساب {code} - {name}"));
-            }
+                temporaryBalances.Add(new TemporaryAccountBalance(
+                    reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetDecimal(3)));
         }
 
-        if (closingLines.Count == 0)
+        var closing = YearEndClosingCalculator.Calculate(
+            temporaryBalances, input.RetainedEarningsAccountId);
+        if (!closing.HasTemporaryBalances)
             return Results.Conflict(new { error = "برای این دوره مانده‌ای در حساب‌های درآمد یا هزینه وجود ندارد." });
-
-        if (netDebit > 0m)
-            closingLines.Add(new ClosingLine(input.RetainedEarningsAccountId, netDebit, 0m, "انتقال زیان خالص دوره به سود و زیان انباشته"));
-        else if (netDebit < 0m)
-            closingLines.Add(new ClosingLine(input.RetainedEarningsAccountId, 0m, -netDebit, "انتقال سود خالص دوره به سود و زیان انباشته"));
+        var closingLines = closing.Lines;
+        var netDebit = closing.NetDebit;
 
         var journalId = Guid.NewGuid();
         await using (var insert = new NpgsqlCommand("""
