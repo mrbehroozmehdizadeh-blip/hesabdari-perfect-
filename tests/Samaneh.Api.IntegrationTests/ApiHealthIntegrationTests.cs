@@ -15,14 +15,13 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
     public ApiHealthIntegrationTests(WebApplicationFactory<Program> factory)
     {
         var configured = factory.WithWebHostBuilder(builder =>
-            builder.ConfigureAppConfiguration((_, configuration) =>
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["Authentication:SigningKey"] = "integration-test-signing-key-at-least-32-bytes",
-                    ["Authentication:Issuer"] = "samaneh-integration-tests",
-                    ["Authentication:Audience"] = "samaneh-api",
-                    ["ConnectionStrings:Postgres"] = ""
-                })));
+        {
+            // UseSetting applies host settings before the top-level Program reads configuration.
+            builder.UseSetting("Authentication:SigningKey", "integration-test-signing-key-at-least-32-bytes");
+            builder.UseSetting("Authentication:Issuer", "samaneh-integration-tests");
+            builder.UseSetting("Authentication:Audience", "samaneh-api");
+            builder.UseSetting("ConnectionStrings:Postgres", "");
+        });
         _client = configured.CreateClient();
     }
 
