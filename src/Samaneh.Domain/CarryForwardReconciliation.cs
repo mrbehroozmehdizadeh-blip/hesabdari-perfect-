@@ -42,6 +42,21 @@ public static class CarryForwardReconciliation
     {
         ArgumentNullException.ThrowIfNull(accounts);
 
+        var seenAccounts = new HashSet<Guid>();
+        foreach (var account in accounts)
+        {
+            if (account is null || account.AccountId == Guid.Empty)
+                throw new ArgumentException("Every reconciliation row must identify an account.", nameof(accounts));
+            if (!seenAccounts.Add(account.AccountId))
+                throw new ArgumentException("An account may appear only once in a reconciliation.", nameof(accounts));
+            if (account.ExpectedDebit < 0m || account.ExpectedCredit < 0m ||
+                account.OpeningDebit < 0m || account.OpeningCredit < 0m)
+                throw new ArgumentException("Reconciliation amounts cannot be negative.", nameof(accounts));
+            if ((account.ExpectedDebit > 0m && account.ExpectedCredit > 0m) ||
+                (account.OpeningDebit > 0m && account.OpeningCredit > 0m))
+                throw new ArgumentException("An account balance must be represented on one side only.", nameof(accounts));
+        }
+
         var expectedDebit = accounts.Sum(x => x.ExpectedDebit);
         var expectedCredit = accounts.Sum(x => x.ExpectedCredit);
         var openingDebit = accounts.Sum(x => x.OpeningDebit);
