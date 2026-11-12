@@ -14,6 +14,8 @@ public sealed record JournalLine
             throw new ArgumentOutOfRangeException(nameof(debit), "Debit and credit amounts cannot be negative.");
         if (debit.Currency != credit.Currency)
             throw new InvalidOperationException("Debit and credit currencies must match.");
+        if (debit.Amount == 0m && credit.Amount == 0m)
+            throw new InvalidOperationException("A journal line must have a positive debit or credit amount.");
         if (debit.Amount > 0m && credit.Amount > 0m)
             throw new InvalidOperationException("A journal line cannot have both debit and credit amounts.");
 
