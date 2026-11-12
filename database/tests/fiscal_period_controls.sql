@@ -13,6 +13,7 @@ DECLARE
     carry_duplicate_id uuid := gen_random_uuid();
     next_period_id uuid := gen_random_uuid();
     later_period_id uuid := gen_random_uuid();
+    alternate_next_period_id uuid := gen_random_uuid();
 BEGIN
     INSERT INTO tenants(id, tenant_code, display_name)
     VALUES (tenant_key, 'CI-' || replace(tenant_key::text,'-',''), 'CI fiscal test');
@@ -25,7 +26,8 @@ BEGIN
 
     INSERT INTO fiscal_periods(id,tenant_id,company_id,period_code,starts_on,ends_on)
     VALUES (next_period_id,tenant_key,company_key,'FY-NEXT',DATE '2027-01-01',DATE '2027-12-31'),
-           (later_period_id,tenant_key,company_key,'FY-LATER',DATE '2028-01-01',DATE '2028-12-31');
+           (later_period_id,tenant_key,company_key,'FY-LATER',DATE '2028-01-01',DATE '2028-12-31'),
+           (alternate_next_period_id,tenant_key,company_key,'FY-NEXT-ALT',DATE '2027-01-01',DATE '2027-12-31');
 
     INSERT INTO journal_entries
         (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
@@ -121,7 +123,7 @@ BEGIN
             (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
              idempotency_key,created_by,journal_type,opening_source_period_id)
         VALUES
-            (carry_duplicate_id,tenant_key,company_key,later_period_id,'CARRY-CI-2',DATE '2028-01-01',
+            (carry_duplicate_id,tenant_key,company_key,alternate_next_period_id,'CARRY-CI-2',DATE '2027-01-01',
              'EUR','CARRY-CI-KEY-2',gen_random_uuid(),'OPENING',period_key);
     EXCEPTION WHEN unique_violation THEN
         rejected := true;
