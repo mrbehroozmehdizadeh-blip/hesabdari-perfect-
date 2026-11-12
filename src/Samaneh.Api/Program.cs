@@ -332,6 +332,7 @@ if (!string.IsNullOrWhiteSpace(key))
     FiscalPeriodEndpoints.Map(app);
     OpeningBalanceEndpoints.Map(app);
     YearEndClosingEndpoints.Map(app);
+    CarryForwardEndpoints.Map(app);
 }
 if (allowedOrigins.Length > 0) app.UseCors();
 if (!string.IsNullOrWhiteSpace(key)) { app.UseAuthentication(); app.UseAuthorization(); }
