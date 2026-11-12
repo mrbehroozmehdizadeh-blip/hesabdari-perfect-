@@ -44,10 +44,11 @@ jobs:
         run: dotnet test Samaneh.sln --configuration Release --no-build
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
-      - name: Validate database migration against PostgreSQL 18
+      - name: Validate database migrations against PostgreSQL 18
         env:
           PGPASSWORD: ci-test-password
         run: |
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0001_financial_core.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0002_company_memberships.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0003_journal_line_company_integrity.sql
+          psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0004_journal_idempotency_fingerprint.sql
