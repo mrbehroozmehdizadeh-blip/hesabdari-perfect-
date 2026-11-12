@@ -14,6 +14,7 @@ public static class JournalEndpoints
         group.MapPost("/", CreateDraft);
         group.MapPost("/{journalId:guid}/submit", SubmitForApproval);
         group.MapPost("/{journalId:guid}/approve", Approve);
+        group.MapPost("/{journalId:guid}/post", PostToLedger);
         group.MapGet("/{journalId:guid}", GetById);
     }
 
@@ -377,6 +378,124 @@ public static class JournalEndpoints
         return Results.Ok(new { id = journalId, status = "APPROVED" });
     }
 
+
+    private static async Task<IResult> PostToLedger(
+        Guid companyId, Guid journalId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct)
+    {
+        if (!TryIdentity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await SetTenant(c, tx, tenant, ct);
+        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await HasPostingPermission(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+
+        Guid creator;
+        Guid approver;
+        Guid periodId;
+        DateOnly entryDate;
+        string currency;
+        string periodStatus;
+        await using (var check = new NpgsqlCommand("""
+            SELECT j.created_by, j.approved_by, j.fiscal_period_id, j.entry_date,
+                   j.currency_code, j.entry_status, p.period_status, p.starts_on, p.ends_on
+              FROM journal_entries j
+              JOIN fiscal_periods p
+                ON p.tenant_id=j.tenant_id AND p.company_id=j.company_id AND p.id=j.fiscal_period_id
+             WHERE j.tenant_id=@tenant AND j.company_id=@company AND j.id=@id
+             FOR UPDATE OF j, p
+            """, c, tx))
+        {
+            check.Parameters.AddWithValue("tenant", tenant);
+            check.Parameters.AddWithValue("company", companyId);
+            check.Parameters.AddWithValue("id", journalId);
+            await using var reader = await check.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return Results.NotFound();
+            creator = reader.GetGuid(0);
+            approver = reader.GetGuid(1);
+            periodId = reader.GetGuid(2);
+            entryDate = reader.GetFieldValue<DateOnly>(3);
+            currency = reader.GetString(4).Trim();
+            var status = reader.GetString(5);
+            periodStatus = reader.GetString(6);
+            var starts = reader.GetFieldValue<DateOnly>(7);
+            var ends = reader.GetFieldValue<DateOnly>(8);
+            await reader.CloseAsync();
+
+            if (status != "APPROVED")
+                return Results.Conflict(new { error = "فقط سند تأییدشده قابل ثبت در دفتر کل است." });
+            if (actor == creator || actor == approver)
+                return Results.Forbid();
+            if (periodStatus != "OPEN" || entryDate < starts || entryDate > ends)
+                return Results.Conflict(new { error = "دوره مالی باز نیست یا تاریخ سند خارج از محدوده دوره است." });
+        }
+
+        long lineCount;
+        decimal debit;
+        decimal credit;
+        long validAccounts;
+        await using (var validate = new NpgsqlCommand("""
+            SELECT count(*), coalesce(sum(l.debit_amount),0), coalesce(sum(l.credit_amount),0),
+                   count(*) FILTER (WHERE a.is_active=true AND a.is_postable=true)
+              FROM journal_lines l
+              JOIN accounts a
+                ON a.tenant_id=l.tenant_id AND a.company_id=l.company_id AND a.id=l.account_id
+             WHERE l.tenant_id=@tenant AND l.company_id=@company AND l.journal_entry_id=@id
+            """, c, tx))
+        {
+            validate.Parameters.AddWithValue("tenant", tenant);
+            validate.Parameters.AddWithValue("company", companyId);
+            validate.Parameters.AddWithValue("id", journalId);
+            await using var reader = await validate.ExecuteReaderAsync(ct);
+            await reader.ReadAsync(ct);
+            lineCount = reader.GetInt64(0);
+            debit = reader.GetDecimal(1);
+            credit = reader.GetDecimal(2);
+            validAccounts = reader.GetInt64(3);
+        }
+
+        if (lineCount < 2 || debit <= 0m || debit != credit || validAccounts != lineCount)
+            return Results.Conflict(new { error = "توازن سند یا وضعیت حساب‌های آن معتبر نیست؛ ثبت دفتر کل انجام نشد." });
+
+        // The source journal, ledger rows, status change and audit event commit or roll back together.
+        await using (var insert = new NpgsqlCommand("""
+            INSERT INTO general_ledger_lines
+                (tenant_id,company_id,fiscal_period_id,journal_entry_id,journal_line_id,
+                 account_id,entry_date,currency_code,debit_amount,credit_amount,posted_by)
+            SELECT l.tenant_id,l.company_id,@period,j.id,l.id,l.account_id,j.entry_date,
+                   j.currency_code,l.debit_amount,l.credit_amount,@actor
+              FROM journal_lines l
+              JOIN journal_entries j
+                ON j.tenant_id=l.tenant_id AND j.company_id=l.company_id AND j.id=l.journal_entry_id
+             WHERE l.tenant_id=@tenant AND l.company_id=@company AND j.id=@id
+            """, c, tx))
+        {
+            insert.Parameters.AddWithValue("period", periodId);
+            insert.Parameters.AddWithValue("actor", actor);
+            insert.Parameters.AddWithValue("tenant", tenant);
+            insert.Parameters.AddWithValue("company", companyId);
+            insert.Parameters.AddWithValue("id", journalId);
+            if (await insert.ExecuteNonQueryAsync(ct) != lineCount)
+                return Results.Conflict(new { error = "تعداد سطرهای انتقال‌یافته به دفتر کل با سند مبدأ برابر نیست." });
+        }
+
+        await using (var update = new NpgsqlCommand("""
+            UPDATE journal_entries
+               SET entry_status='POSTED', posted_by=@actor, posted_at=now()
+             WHERE tenant_id=@tenant AND company_id=@company AND id=@id AND entry_status='APPROVED'
+            """, c, tx))
+        {
+            update.Parameters.AddWithValue("actor", actor);
+            update.Parameters.AddWithValue("tenant", tenant);
+            update.Parameters.AddWithValue("company", companyId);
+            update.Parameters.AddWithValue("id", journalId);
+            if (await update.ExecuteNonQueryAsync(ct) != 1) return Results.Conflict();
+        }
+
+        await WriteAudit(c, tx, tenant, companyId, actor, journalId, "JOURNAL_POSTED_TO_GENERAL_LEDGER", ct);
+        await tx.CommitAsync(ct);
+        return Results.Ok(new { id = journalId, status = "POSTED", ledgerLines = lineCount, debitTotal = debit, creditTotal = credit, currency });
+    }
+
     private static async Task<IResult> GetById(
         Guid companyId, Guid journalId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct)
     {
@@ -442,6 +561,23 @@ public static class JournalEndpoints
                 SELECT 1 FROM company_memberships
                  WHERE tenant_id=@tenant AND company_id=@company AND user_id=@actor
                    AND is_active=true AND role_code='FINANCE_APPROVER'
+            )
+            """, c, tx);
+        cmd.Parameters.AddWithValue("tenant", tenant);
+        cmd.Parameters.AddWithValue("company", company);
+        cmd.Parameters.AddWithValue("actor", actor);
+        return (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
+    }
+
+
+    private static async Task<bool> HasPostingPermission(
+        NpgsqlConnection c, NpgsqlTransaction tx, Guid tenant, Guid company, Guid actor, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1 FROM company_memberships
+                 WHERE tenant_id=@tenant AND company_id=@company AND user_id=@actor
+                   AND is_active=true AND role_code='FINANCE_POSTER'
             )
             """, c, tx);
         cmd.Parameters.AddWithValue("tenant", tenant);
