@@ -90,6 +90,7 @@ if (!string.IsNullOrWhiteSpace(key))
         await using var c=await ds.OpenConnectionAsync(ct);
         await using var tx=await c.BeginTransactionAsync(ct);
         await Tenant(c,tx,tenant,ct);
+        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
         if ((input.Level==1 && input.ParentId is not null) || (input.Level>1 && input.ParentId is null))
             return Results.ValidationProblem(new Dictionary<string,string[]>{{"parentId",["والد با سطح حساب سازگار نیست."]}});
         if (input.ParentId is Guid pid) {
