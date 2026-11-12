@@ -138,6 +138,21 @@ BEGIN
             (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
              idempotency_key,created_by,journal_type,opening_source_period_id)
         VALUES
+            (gen_random_uuid(),tenant_key,company_key,later_period_id,'CARRY-CI-GAP',DATE '2028-01-01',
+             'EUR','CARRY-CI-KEY-GAP',gen_random_uuid(),'OPENING',period_key);
+    EXCEPTION WHEN raise_exception THEN
+        rejected := true;
+    END;
+    IF NOT rejected THEN
+        RAISE EXCEPTION 'Carry-forward target period must be immediately contiguous with source';
+    END IF;
+
+    rejected := false;
+    BEGIN
+        INSERT INTO journal_entries
+            (id,tenant_id,company_id,fiscal_period_id,entry_number,entry_date,currency_code,
+             idempotency_key,created_by,journal_type,opening_source_period_id)
+        VALUES
             (gen_random_uuid(),tenant_key,company_key,period_key,'CARRY-CI-SELF',DATE '2026-01-01',
              'EUR','CARRY-CI-KEY-SELF',gen_random_uuid(),'OPENING',period_key);
     EXCEPTION WHEN check_violation THEN
