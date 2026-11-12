@@ -68,6 +68,19 @@ public sealed class YearEndClosingCalculatorTests
     }
 
     [Fact]
+    public void Calculate_RejectsNullBalanceRowBeforeSorting()
+    {
+        TemporaryAccountBalance[] balances =
+        [
+            null!,
+            new TemporaryAccountBalance(Guid.NewGuid(), "5001", "Expenses", 100m)
+        ];
+
+        Assert.Throws<ArgumentException>(() =>
+            YearEndClosingCalculator.Calculate(balances, RetainedEarnings));
+    }
+
+    [Fact]
     public void Calculate_RejectsDuplicateTemporaryAccount()
     {
         var accountId = Guid.NewGuid();
