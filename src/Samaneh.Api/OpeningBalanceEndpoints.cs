@@ -72,6 +72,28 @@ public static class OpeningBalanceEndpoints
         if (!await HasRole(c, tx, tenant, companyId, actor, "FINANCE_OPENING_MANAGER", ct))
             return Results.Forbid();
 
+        await using (var existing = new NpgsqlCommand("""
+            SELECT id, request_fingerprint, entry_status FROM journal_entries
+             WHERE tenant_id=@tenant AND company_id=@company AND idempotency_key=@key
+            """, c, tx))
+        {
+            existing.Parameters.AddWithValue("tenant", tenant);
+            existing.Parameters.AddWithValue("company", companyId);
+            existing.Parameters.AddWithValue("key", key);
+            await using var reader = await existing.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                var id = reader.GetGuid(0);
+                var prior = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
+                var currentStatus = reader.GetString(2);
+                if (!string.Equals(prior, fingerprint, StringComparison.Ordinal))
+                    return Results.Conflict(new { error = "کلید تکرارناپذیری قبلاً برای محتوای دیگری استفاده شده است." });
+                await reader.CloseAsync();
+                await tx.CommitAsync(ct);
+                return Results.Ok(new { id, status = currentStatus, journalType = "OPENING", reused = true });
+            }
+        }
+
         DateOnly startsOn;
         string periodStatus, currency;
         await using (var period = new NpgsqlCommand("""
@@ -109,27 +131,6 @@ public static class OpeningBalanceEndpoints
                 {
                     ["lines"] = ["تمام حساب‌ها باید در همین شرکت فعال و قابل ثبت باشند."]
                 });
-        }
-
-        await using (var existing = new NpgsqlCommand("""
-            SELECT id, request_fingerprint FROM journal_entries
-             WHERE tenant_id=@tenant AND company_id=@company AND idempotency_key=@key
-            """, c, tx))
-        {
-            existing.Parameters.AddWithValue("tenant", tenant);
-            existing.Parameters.AddWithValue("company", companyId);
-            existing.Parameters.AddWithValue("key", key);
-            await using var reader = await existing.ExecuteReaderAsync(ct);
-            if (await reader.ReadAsync(ct))
-            {
-                var id = reader.GetGuid(0);
-                var prior = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
-                if (!string.Equals(prior, fingerprint, StringComparison.Ordinal))
-                    return Results.Conflict(new { error = "کلید تکرارناپذیری قبلاً برای محتوای دیگری استفاده شده است." });
-                await reader.CloseAsync();
-                await tx.CommitAsync(ct);
-                return Results.Ok(new { id, status = "DRAFT", journalType = "OPENING", reused = true });
-            }
         }
 
         await using (var openingExists = new NpgsqlCommand("""
