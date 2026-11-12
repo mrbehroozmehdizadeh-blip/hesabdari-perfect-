@@ -45,11 +45,14 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    [Fact]
-    public async Task CompanyAccounts_RejectsAnonymousRequests()
+    [Theory]
+    [InlineData("accounts")]
+    [InlineData("fiscal-periods")]
+    [InlineData("journal-entries")]
+    public async Task CompanyFinancialRoutes_RejectAnonymousRequests(string route)
     {
         var companyId = Guid.NewGuid();
-        using var response = await _client.GetAsync($"/api/companies/{companyId}/accounts/");
+        using var response = await _client.GetAsync($"/api/companies/{companyId}/{route}/");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
