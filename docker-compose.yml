@@ -28,11 +28,11 @@ services:
       - ./database/migrations:/migrations:ro
     entrypoint: ["/bin/sh", "-c"]
     command: >-
-      'set -eu;
+      set -eu;
       for migration in /migrations/*.sql; do
         echo "Applying $$migration";
         psql -h postgres -U samaneh_app -d samaneh -v ON_ERROR_STOP=1 -f "$$migration";
-      done'
+      done
 
   api:
     build:
