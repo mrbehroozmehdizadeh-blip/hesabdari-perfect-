@@ -17,7 +17,9 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Authentication:SigningKey"] = "",
+                    ["Authentication:SigningKey"] = "integration-test-signing-key-at-least-32-bytes",
+                    ["Authentication:Issuer"] = "samaneh-integration-tests",
+                    ["Authentication:Audience"] = "samaneh-api",
                     ["ConnectionStrings:Postgres"] = ""
                 })));
         _client = configured.CreateClient();
@@ -41,6 +43,14 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
     {
         using var response = await _client.GetAsync("/health");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CompanyAccounts_RejectsAnonymousRequests()
+    {
+        var companyId = Guid.NewGuid();
+        using var response = await _client.GetAsync($"/api/companies/{companyId}/accounts/");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
