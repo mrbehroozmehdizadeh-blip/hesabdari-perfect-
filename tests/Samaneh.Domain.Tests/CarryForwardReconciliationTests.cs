@@ -87,4 +87,42 @@ public sealed class CarryForwardReconciliationTests
         Assert.True(result.IsBalanced);
         Assert.False(result.Reconciled);
     }
+
+    [Fact]
+    public void Evaluate_RejectsDuplicateAccountRows()
+    {
+        var id = Guid.NewGuid();
+        var rows = new[]
+        {
+            new CarryForwardAccountBalance(id, "1001", "Cash", 100m, 0m, 100m, 0m),
+            new CarryForwardAccountBalance(id, "1001", "Cash", 100m, 0m, 100m, 0m)
+        };
+
+        Assert.Throws<ArgumentException>(() =>
+            CarryForwardReconciliation.Evaluate("POSTED", "LOCKED", SourceEnd, TargetStart, rows));
+    }
+
+    [Fact]
+    public void Evaluate_RejectsNegativeAmounts()
+    {
+        var rows = new[]
+        {
+            new CarryForwardAccountBalance(Guid.NewGuid(), "1001", "Cash", -100m, 0m, -100m, 0m)
+        };
+
+        Assert.Throws<ArgumentException>(() =>
+            CarryForwardReconciliation.Evaluate("POSTED", "LOCKED", SourceEnd, TargetStart, rows));
+    }
+
+    [Fact]
+    public void Evaluate_RejectsBothSidesForOneAccount()
+    {
+        var rows = new[]
+        {
+            new CarryForwardAccountBalance(Guid.NewGuid(), "1001", "Cash", 100m, 10m, 100m, 10m)
+        };
+
+        Assert.Throws<ArgumentException>(() =>
+            CarryForwardReconciliation.Evaluate("POSTED", "LOCKED", SourceEnd, TargetStart, rows));
+    }
 }
