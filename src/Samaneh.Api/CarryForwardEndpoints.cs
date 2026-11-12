@@ -48,6 +48,28 @@ public static class CarryForwardEndpoints
         if (!await HasRole(c, tx, tenant, companyId, actor, "FINANCE_OPENING_MANAGER", ct))
             return Results.Forbid();
 
+        await using (var existing = new NpgsqlCommand("""
+            SELECT id,request_fingerprint,entry_status FROM journal_entries
+             WHERE tenant_id=@tenant AND company_id=@company AND idempotency_key=@key
+            """, c, tx))
+        {
+            existing.Parameters.AddWithValue("tenant", tenant);
+            existing.Parameters.AddWithValue("company", companyId);
+            existing.Parameters.AddWithValue("key", key);
+            await using var reader = await existing.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                var id = reader.GetGuid(0);
+                var prior = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
+                var currentStatus = reader.GetString(2);
+                if (!string.Equals(prior, fingerprint, StringComparison.Ordinal))
+                    return Results.Conflict(new { error = "کلید یکتا قبلاً برای محتوای دیگری استفاده شده است." });
+                await reader.CloseAsync();
+                await tx.CommitAsync(ct);
+                return Results.Ok(new { id, status = currentStatus, journalType = "OPENING", reused = true });
+            }
+        }
+
         // Lock both periods in stable UUID order to serialize carry-forward against
         // period administration and competing opening-draft creation.
         var periodIds = new[] { input.SourceFiscalPeriodId, input.TargetFiscalPeriodId }
@@ -119,27 +141,6 @@ public static class CarryForwardEndpoints
             closingCheck.Parameters.AddWithValue("source", input.SourceFiscalPeriodId);
             if ((bool)(await closingCheck.ExecuteScalarAsync(ct) ?? false))
                 return Results.Conflict(new { error = "مانده حساب‌های درآمد و هزینه دوره مبدأ هنوز صفر نشده است؛ ابتدا بستن حساب‌های موقت را تکمیل و ثبت قطعی کنید." });
-        }
-
-        await using (var existing = new NpgsqlCommand("""
-            SELECT id,request_fingerprint FROM journal_entries
-             WHERE tenant_id=@tenant AND company_id=@company AND idempotency_key=@key
-            """, c, tx))
-        {
-            existing.Parameters.AddWithValue("tenant", tenant);
-            existing.Parameters.AddWithValue("company", companyId);
-            existing.Parameters.AddWithValue("key", key);
-            await using var reader = await existing.ExecuteReaderAsync(ct);
-            if (await reader.ReadAsync(ct))
-            {
-                var id = reader.GetGuid(0);
-                var prior = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
-                if (!string.Equals(prior, fingerprint, StringComparison.Ordinal))
-                    return Results.Conflict(new { error = "کلید یکتا قبلاً برای محتوای دیگری استفاده شده است." });
-                await reader.CloseAsync();
-                await tx.CommitAsync(ct);
-                return Results.Ok(new { id, status = "DRAFT", journalType = "OPENING", reused = true });
-            }
         }
 
         await using (var existingOpening = new NpgsqlCommand("""
