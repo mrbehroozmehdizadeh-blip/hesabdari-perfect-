@@ -49,6 +49,8 @@ public static class CarryForwardReconciliation
                 throw new ArgumentException("Every reconciliation row must identify an account.", nameof(accounts));
             if (!seenAccounts.Add(account.AccountId))
                 throw new ArgumentException("An account may appear only once in a reconciliation.", nameof(accounts));
+            if (string.IsNullOrWhiteSpace(account.AccountCode))
+                throw new ArgumentException("Every reconciliation row must include an account code.", nameof(accounts));
             if (account.ExpectedDebit < 0m || account.ExpectedCredit < 0m ||
                 account.OpeningDebit < 0m || account.OpeningCredit < 0m)
                 throw new ArgumentException("Reconciliation amounts cannot be negative.", nameof(accounts));
