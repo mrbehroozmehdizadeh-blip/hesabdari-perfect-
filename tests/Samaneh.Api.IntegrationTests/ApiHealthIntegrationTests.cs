@@ -2,6 +2,8 @@ using Xunit;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -61,6 +63,65 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
         });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
+
+    [Fact]
+    public async Task FinancialRoute_RejectsSignedTokenWithoutTenantClaim()
+    {
+        using var client = CreateAuthenticatedClient(tenantId: null, subject: Guid.NewGuid().ToString());
+        using var response = await client.GetAsync($"/api/companies/{Guid.NewGuid()}/accounts");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task FinancialRoute_RejectsSignedTokenWithoutSubjectClaim()
+    {
+        using var client = CreateAuthenticatedClient(tenantId: Guid.NewGuid().ToString(), subject: null);
+        using var response = await client.GetAsync($"/api/companies/{Guid.NewGuid()}/accounts");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task FinancialRoute_RejectsTokenSignedWithDisallowedAlgorithm()
+    {
+        using var client = CreateAuthenticatedClient(
+            tenantId: Guid.NewGuid().ToString(),
+            subject: Guid.NewGuid().ToString(),
+            algorithm: "HS512");
+        using var response = await client.GetAsync($"/api/companies/{Guid.NewGuid()}/accounts");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private HttpClient CreateAuthenticatedClient(string? tenantId, string? subject, string algorithm = "HS256")
+    {
+        var client = _client;
+        var header = Base64Url(JsonSerializer.Serialize(new { alg = algorithm, typ = "JWT" }));
+        var payload = Base64Url(JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["iss"] = "samaneh-integration-tests",
+            ["aud"] = "samaneh-api",
+            ["exp"] = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds(),
+            ["tenant_id"] = tenantId,
+            ["sub"] = subject
+        }));
+        var unsigned = $"{header}.{payload}";
+        var key = Encoding.UTF8.GetBytes("integration-test-signing-key-at-least-32-bytes");
+        var data = Encoding.UTF8.GetBytes(unsigned);
+        var signature = algorithm switch
+        {
+            "HS512" => HMACSHA512.HashData(key, data),
+            _ => HMACSHA256.HashData(key, data)
+        };
+        var token = $"{unsigned}.{Base64Url(signature)}";
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return client;
+    }
+
+    private static string Base64Url(string value) =>
+        Base64Url(Encoding.UTF8.GetBytes(value));
+
+    private static string Base64Url(byte[] value) =>
+        Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     [Fact]
     public async Task DatabaseHealth_ReturnsServiceUnavailableWhenDatabaseIsNotConfigured()
