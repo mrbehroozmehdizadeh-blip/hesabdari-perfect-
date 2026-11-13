@@ -66,6 +66,6 @@ BEGIN
         RAISE EXCEPTION 'Active target guard must scope by tenant, company and active status';
     END IF;
 
-END $;
+END $$;
 
 ROLLBACK;
