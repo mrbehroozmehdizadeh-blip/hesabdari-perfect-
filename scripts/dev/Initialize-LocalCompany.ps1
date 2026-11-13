@@ -27,10 +27,10 @@ Get-Content $envPath | ForEach-Object {
     }
 }
 $signingKey = $settings["AUTHENTICATION_SIGNING_KEY"]
-if ([string]::IsNullOrWhiteSpace($signingKey) -or [System.Text.Encoding]::UTF8.GetByteCount($signingKey) -lt 32) {
+if ([string]::IsNullOrWhiteSpace($signingKey) -or $signingKey -like "replace-with-*" -or [System.Text.Encoding]::UTF8.GetByteCount($signingKey) -lt 32) {
     throw "AUTHENTICATION_SIGNING_KEY باید حداقل ۳۲ بایت UTF-8 باشد."
 }
-if ([string]::IsNullOrWhiteSpace($settings["POSTGRES_PASSWORD"])) {
+if ([string]::IsNullOrWhiteSpace($settings["POSTGRES_PASSWORD"]) -or $settings["POSTGRES_PASSWORD"] -like "replace-with-*") {
     throw "POSTGRES_PASSWORD در .env تنظیم نشده است."
 }
 
