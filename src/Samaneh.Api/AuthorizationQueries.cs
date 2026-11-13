@@ -15,16 +15,16 @@ public static class AuthorizationQueries
             SELECT EXISTS (
                 SELECT 1
                   FROM company_memberships membership
-                  JOIN company_roles role
-                    ON role.role_code = membership.role_code
-                   AND role.is_active = true
-                  JOIN role_permissions grant
-                    ON grant.role_code = role.role_code
+                  JOIN company_roles r
+                    ON r.role_code = membership.role_code
+                   AND r.is_active = true
+                  JOIN role_permissions rp
+                    ON rp.role_code = r.role_code
                  WHERE membership.tenant_id = @tenant
                    AND membership.company_id = @company
                    AND membership.user_id = @user
                    AND membership.is_active = true
-                   AND grant.permission_code = @permission
+                   AND rp.permission_code = @permission
             )
             """, connection, transaction);
         command.Parameters.AddWithValue("tenant", tenantId);
