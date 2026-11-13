@@ -69,7 +69,7 @@ public static class OpeningBalanceEndpoints
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
-        if (!await HasRole(c, tx, tenant, companyId, actor, "FINANCE_OPENING_MANAGER", ct))
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "OPENING_BALANCES_CREATE", ct))
             return Results.Forbid();
 
         await using (var existing = new NpgsqlCommand("""
