@@ -199,8 +199,8 @@ if (authenticationConfigured)
     {
         if (!Identity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
         var name = input.Name?.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return Results.ValidationProblem(new Dictionary<string,string[]>{{"name",["نام حساب الزامی است."]}});
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 250)
+            return Results.ValidationProblem(new Dictionary<string,string[]>{{"name",["نام حساب الزامی و حداکثر ۲۵۰ نویسه است."]}});
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await Tenant(c, tx, tenant, ct);
