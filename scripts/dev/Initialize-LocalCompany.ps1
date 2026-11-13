@@ -68,7 +68,7 @@ COMMIT;
 
 Push-Location $repoRoot
 try {
-    $sql | docker compose exec -T postgres psql -U samaneh_app -d samaneh -v ON_ERROR_STOP=1
+    & docker compose exec -T postgres psql -U samaneh_app -d samaneh -v ON_ERROR_STOP=1 -c $sql
     if ($LASTEXITCODE -ne 0) { throw "ایجاد شرکت و عضویت محلی در PostgreSQL ناموفق بود." }
 }
 finally {
