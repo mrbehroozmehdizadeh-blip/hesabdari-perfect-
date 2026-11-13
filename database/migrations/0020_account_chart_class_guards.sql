@@ -77,4 +77,11 @@ BEGIN
 END;
 $function$;
 
+DROP TRIGGER IF EXISTS trg_protect_account_parent ON accounts;
+CREATE TRIGGER trg_protect_account_parent
+BEFORE UPDATE OF account_level, is_postable, account_class
+ON accounts
+FOR EACH ROW
+EXECUTE FUNCTION protect_account_parent_from_invalid_update();
+
 COMMIT;
