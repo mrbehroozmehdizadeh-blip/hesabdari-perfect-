@@ -293,22 +293,7 @@ public static class CarryForwardEndpoints
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task<bool> HasRole(NpgsqlConnection c, NpgsqlTransaction tx,
-        Guid tenant, Guid company, Guid actor, string role, CancellationToken ct)
-    {
-        await using var cmd = new NpgsqlCommand("""
-            SELECT EXISTS(SELECT 1 FROM company_memberships
-             WHERE tenant_id=@tenant AND company_id=@company AND user_id=@actor
-               AND is_active=true AND role_code=@role)
-            """, c, tx);
-        cmd.Parameters.AddWithValue("tenant", tenant);
-        cmd.Parameters.AddWithValue("company", company);
-        cmd.Parameters.AddWithValue("actor", actor);
-        cmd.Parameters.AddWithValue("role", role);
-        return (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
-    }
-
-    private sealed record CarryForwardLine(Guid AccountId, decimal Debit, decimal Credit, string Description);
+        private sealed record CarryForwardLine(Guid AccountId, decimal Debit, decimal Credit, string Description);
 }
 
 public sealed record CreateCarryForwardRequest(
