@@ -5,7 +5,7 @@ The initial schema is in `migrations/0001_financial_core.sql`; company membershi
 ## Safety and execution status
 - This migration set is a design baseline for a NEW development database.
 - It has NOT been applied to Floot or to any production database.
-- All twelve migrations and the rollback-only invariant suites are executed in CI against a fresh, ephemeral PostgreSQL 18 service database. This validates schema creation but is not a backup/restore rehearsal or a production deployment.
+- All thirteen migrations and the rollback-only invariant suites are executed in CI against a fresh, ephemeral PostgreSQL 18 service database. This validates schema creation but is not a backup/restore rehearsal or a production deployment.
 - Do not run it against existing data until a backup, restore rehearsal, schema comparison and explicit migration plan exist.
 
 ## Tenant isolation
@@ -50,3 +50,7 @@ Use a non-owner application database role without BYPASSRLS. The table owner and
 The root `docker-compose.yml` includes a one-shot `migrate` service for a fresh local development volume. It creates `public.schema_migrations`, applies numbered SQL files in filename order, and records each successfully completed file. The SQL migration files themselves are transactional. This local runner is intentionally separate from the CI validation database and is not a production migration orchestrator.
 
 The local Compose database uses a simplified development credential model. Do not copy its database role or exposed ports into a production deployment. Production must use a dedicated non-owner role without `BYPASSRLS`, explicit grants, verified `FORCE ROW LEVEL SECURITY` coverage, secrets management, backups, restore rehearsal and a reviewed migration plan.
+
+- Migration 0013 introduces a centralized global role/permission catalog. Company membership still scopes each user to a tenant and company; the role catalog grants explicit permissions to that membership. API authorization resolves permissions from active membership + active role + role_permissions on every protected request. Role assignments are not accepted from request payloads or JWT role claims.
+- The initial role catalog separates finance viewing, accountant preparation, independent approval, independent posting, period close/lock, opening/carry-forward management and year-end closing. The accountant role cannot approve or post; the approver role cannot post; the poster role cannot approve. FINANCE_ADMIN is seeded with the full catalog, but no administrator provisioning or role-assignment UI is enabled yet.
+- `database/tests/rbac_invariants.sql` is a rollback-only CI check for role separation and the read-only viewer boundary. Fine-grained authorization is now enforced for account, dimension, journal, ledger, fiscal-period, opening-balance, year-end, carry-forward and reconciliation API routes.
