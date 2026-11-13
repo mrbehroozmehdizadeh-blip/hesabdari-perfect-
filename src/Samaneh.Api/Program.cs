@@ -378,19 +378,6 @@ static bool Identity(ClaimsPrincipal p,out Guid tenant,out Guid actor) {
     return Guid.TryParse(p.FindFirst("tenant_id")?.Value,out tenant) &&
       Guid.TryParse(p.FindFirst("sub")?.Value ?? p.FindFirst(ClaimTypes.NameIdentifier)?.Value,out actor);
 }
-static async Task<bool> HasCompanyAccess(NpgsqlConnection c, NpgsqlTransaction tx, Guid tenant, Guid company, Guid actor, CancellationToken ct)
-{
-    await using var cmd = new NpgsqlCommand("""
-        SELECT EXISTS(
-            SELECT 1 FROM company_memberships
-             WHERE tenant_id=@tenant AND company_id=@company AND user_id=@actor AND is_active=true
-        )
-        """, c, tx);
-    cmd.Parameters.AddWithValue("tenant", tenant);
-    cmd.Parameters.AddWithValue("company", company);
-    cmd.Parameters.AddWithValue("actor", actor);
-    return (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
-}
 static async Task Tenant(NpgsqlConnection c,NpgsqlTransaction tx,Guid id,CancellationToken ct) {
     await using var cmd=new NpgsqlCommand("SELECT set_config('app.tenant_id',@tenant,true)",c,tx);
     cmd.Parameters.AddWithValue("tenant",id.ToString()); await cmd.ExecuteNonQueryAsync(ct);
