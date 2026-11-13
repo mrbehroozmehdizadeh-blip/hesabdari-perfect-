@@ -89,6 +89,24 @@ public static class MembershipEndpoints
         if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "MEMBERSHIPS_REQUEST", ct))
             return Results.Forbid();
 
+        // Until a trusted user directory exists, only existing active company
+        // members may receive a role-change request. Never provision an arbitrary GUID.
+        await using (var target = new NpgsqlCommand("""
+            SELECT is_active
+              FROM company_memberships
+             WHERE tenant_id=@tenant AND company_id=@company AND user_id=@target
+            """, c, tx))
+        {
+            target.Parameters.AddWithValue("tenant", tenant);
+            target.Parameters.AddWithValue("company", companyId);
+            target.Parameters.AddWithValue("target", input.TargetUserId);
+            if (await target.ExecuteScalarAsync(ct) is not bool targetIsActive || !targetIsActive)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["targetUserId"] = ["تغییر نقش فقط برای کاربر دارای عضویت فعال در همین شرکت مجاز است."]
+                });
+        }
+
         await using (var role = new NpgsqlCommand("""
             SELECT is_active
               FROM company_roles
@@ -212,17 +230,18 @@ public static class MembershipEndpoints
                 previousRole = (string?)await current.ExecuteScalarAsync(ct);
             }
 
-            await using var upsert = new NpgsqlCommand("""
-                INSERT INTO company_memberships(tenant_id,company_id,user_id,role_code,is_active)
-                VALUES(@tenant,@company,@target,@role,true)
-                ON CONFLICT (tenant_id,company_id,user_id)
-                DO UPDATE SET role_code=EXCLUDED.role_code, is_active=true
+            await using var updateMembership = new NpgsqlCommand("""
+                UPDATE company_memberships
+                   SET role_code=@role
+                 WHERE tenant_id=@tenant AND company_id=@company
+                   AND user_id=@target AND is_active=true
                 """, c, tx);
-            upsert.Parameters.AddWithValue("tenant", tenant);
-            upsert.Parameters.AddWithValue("company", companyId);
-            upsert.Parameters.AddWithValue("target", targetUserId);
-            upsert.Parameters.AddWithValue("role", requestedRoleCode);
-            await upsert.ExecuteNonQueryAsync(ct);
+            updateMembership.Parameters.AddWithValue("tenant", tenant);
+            updateMembership.Parameters.AddWithValue("company", companyId);
+            updateMembership.Parameters.AddWithValue("target", targetUserId);
+            updateMembership.Parameters.AddWithValue("role", requestedRoleCode);
+            if (await updateMembership.ExecuteNonQueryAsync(ct) != 1)
+                return Results.Conflict(new { error = "عضویت فعال کاربر تغییر کرده یا دیگر وجود ندارد؛ درخواست قابل اجرا نیست." });
         }
 
         var status = approve ? "APPROVED" : "REJECTED";
