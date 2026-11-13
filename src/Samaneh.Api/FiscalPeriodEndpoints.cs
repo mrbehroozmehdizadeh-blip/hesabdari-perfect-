@@ -17,7 +17,7 @@ public static class FiscalPeriodEndpoints
             await using var c = await ds.OpenConnectionAsync(ct);
             await using var tx = await c.BeginTransactionAsync(ct);
             await SetTenant(c, tx, tenant, ct);
-            if (!await HasMembership(c, tx, tenant, companyId, actor, null, ct))
+            if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "FISCAL_PERIODS_READ", ct))
                 return Results.Forbid();
 
             await using var cmd = new NpgsqlCommand("""
@@ -45,12 +45,12 @@ public static class FiscalPeriodEndpoints
         group.MapPost("/{periodId:guid}/close", (Guid companyId, Guid periodId,
             ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
             ChangeStatus(companyId, periodId, "OPEN", "CLOSED",
-                "FINANCE_PERIOD_CLOSER", "FISCAL_PERIOD_CLOSED", user, ds, ct));
+                "FISCAL_PERIOD_CLOSE", "FISCAL_PERIOD_CLOSED", user, ds, ct));
 
         group.MapPost("/{periodId:guid}/lock", (Guid companyId, Guid periodId,
             ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
             ChangeStatus(companyId, periodId, "CLOSED", "LOCKED",
-                "FINANCE_PERIOD_LOCKER", "FISCAL_PERIOD_LOCKED", user, ds, ct));
+                "FISCAL_PERIOD_LOCK", "FISCAL_PERIOD_LOCKED", user, ds, ct));
     }
 
     private static async Task<IResult> ChangeStatus(Guid companyId, Guid periodId,
@@ -64,7 +64,7 @@ public static class FiscalPeriodEndpoints
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
 
-        if (!await HasMembership(c, tx, tenant, companyId, actor, requiredRole, ct))
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, requiredRole, ct))
             return Results.Forbid();
 
         string? code;
