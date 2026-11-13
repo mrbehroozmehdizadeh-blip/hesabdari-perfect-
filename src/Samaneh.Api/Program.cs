@@ -27,15 +27,42 @@ if (!string.IsNullOrWhiteSpace(key) && System.Text.Encoding.UTF8.GetByteCount(ke
     throw new InvalidOperationException("Authentication:SigningKey must contain at least 32 UTF-8 bytes.");
 if (!string.IsNullOrWhiteSpace(key))
 {
+    var issuer = builder.Configuration["Authentication:Issuer"];
+    var audience = builder.Configuration["Authentication:Audience"];
+    if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
+        throw new InvalidOperationException("Authentication:Issuer and Authentication:Audience are required when JWT authentication is enabled.");
+
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
     {
+        // Preserve the exact JWT claim names used by the authorization boundary.
+        o.MapInboundClaims = false;
+        o.SaveToken = false;
+        o.IncludeErrorDetails = false;
         o.TokenValidationParameters = new()
         {
-            ValidateIssuer = true, ValidIssuer = builder.Configuration["Authentication:Issuer"],
-            ValidateAudience = true, ValidAudience = builder.Configuration["Authentication:Audience"],
+            RequireSignedTokens = true,
+            RequireExpirationTime = true,
+            ValidateIssuer = true,
+            ValidIssuer = issuer,
+            ValidateAudience = true,
+            ValidAudience = audience,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(key)),
-            ValidateLifetime = true, ClockSkew = TimeSpan.FromSeconds(30)
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+            ValidAlgorithms = [Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256]
+        };
+        o.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                var tenant = context.Principal?.FindFirst("tenant_id")?.Value;
+                var subject = context.Principal?.FindFirst("sub")?.Value;
+                if (!Guid.TryParse(tenant, out var tenantId) || tenantId == Guid.Empty ||
+                    !Guid.TryParse(subject, out var subjectId) || subjectId == Guid.Empty)
+                    context.Fail("Required tenant_id and sub claims must be non-empty GUIDs.");
+                return Task.CompletedTask;
+            }
         };
     });
     builder.Services.AddAuthorization();
