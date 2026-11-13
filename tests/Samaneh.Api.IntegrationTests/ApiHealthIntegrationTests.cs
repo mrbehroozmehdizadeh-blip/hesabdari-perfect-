@@ -13,10 +13,11 @@ namespace Samaneh.Api.IntegrationTests;
 public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
+    private readonly WebApplicationFactory<Program> _configuredFactory;
 
     public ApiHealthIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        var configured = factory.WithWebHostBuilder(builder =>
+        _configuredFactory = factory.WithWebHostBuilder(builder =>
         {
             // UseSetting applies host settings before the top-level Program reads configuration.
             builder.UseSetting("Authentication:SigningKey", "integration-test-signing-key-at-least-32-bytes");
@@ -24,7 +25,7 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
             builder.UseSetting("Authentication:Audience", "samaneh-api");
             builder.UseSetting("ConnectionStrings:Postgres", "");
         });
-        _client = configured.CreateClient();
+        _client = _configuredFactory.CreateClient();
     }
 
     [Fact]
@@ -93,7 +94,7 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
 
     private HttpClient CreateAuthenticatedClient(string? tenantId, string? subject, string algorithm = "HS256")
     {
-        var client = _client;
+        var client = _configuredFactory.CreateClient();
         var header = Base64Url(JsonSerializer.Serialize(new { alg = algorithm, typ = "JWT" }));
         var payload = Base64Url(JsonSerializer.Serialize(new Dictionary<string, object?>
         {
