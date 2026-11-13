@@ -95,7 +95,7 @@ public static class JournalEndpoints
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
 
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct))
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "JOURNALS_CREATE", ct))
             return Results.Forbid();
 
         // Drafts are recorded in the company's functional currency until explicit FX
@@ -267,7 +267,7 @@ public static class JournalEndpoints
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "JOURNALS_SUBMIT", ct)) return Results.Forbid();
 
         await using (var check = new NpgsqlCommand("""
             SELECT created_by, entry_status FROM journal_entries
@@ -311,7 +311,7 @@ public static class JournalEndpoints
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
-        if (!await HasApprovalPermission(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "JOURNALS_APPROVE", ct)) return Results.Forbid();
 
         await using (var check = new NpgsqlCommand("""
             SELECT j.created_by, j.entry_status, p.period_status, p.starts_on, p.ends_on, j.entry_date
@@ -407,7 +407,7 @@ public static class JournalEndpoints
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "JOURNALS_REVERSE", ct)) return Results.Forbid();
 
         string currency;
         await using (var source = new NpgsqlCommand("""
@@ -558,8 +558,7 @@ public static class JournalEndpoints
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
-        if (!await HasPostingPermission(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "JOURNALS_POST", ct)) return Results.Forbid();
 
         Guid creator;
         Guid approver;
@@ -675,7 +674,7 @@ public static class JournalEndpoints
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "JOURNALS_READ", ct)) return Results.Forbid();
 
         object? header;
         await using (var cmd = new NpgsqlCommand("""
