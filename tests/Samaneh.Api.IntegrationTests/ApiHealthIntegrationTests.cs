@@ -125,6 +125,37 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
         Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     [Fact]
+    public async Task MembershipQueue_RejectsAnonymousRequests()
+    {
+        using var response = await _client.GetAsync($"/api/companies/{Guid.NewGuid()}/membership-changes/");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MembershipRequest_RejectsSelfTargetBeforeDatabaseAccess()
+    {
+        var actor = Guid.NewGuid();
+        using var client = CreateAuthenticatedClient(Guid.NewGuid().ToString(), actor.ToString());
+        using var response = await client.PostAsJsonAsync(
+            $"/api/companies/{Guid.NewGuid()}/membership-changes/",
+            new { targetUserId = actor, requestedRoleCode = "FINANCE_VIEWER", reason = "تغییر نقش" });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task MembershipRejection_RequiresReviewerRationale(string? reason)
+    {
+        using var client = CreateAuthenticatedClient(Guid.NewGuid().ToString(), Guid.NewGuid().ToString());
+        using var response = await client.PostAsJsonAsync(
+            $"/api/companies/{Guid.NewGuid()}/membership-changes/{Guid.NewGuid()}/reject",
+            new { reason });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task DatabaseHealth_ReturnsServiceUnavailableWhenDatabaseIsNotConfigured()
     {
         using var response = await _client.GetAsync("/health/db");
