@@ -4,7 +4,7 @@
 
 - JWT authentication is enabled only when `Authentication:SigningKey` is configured.
 - When enabled, `Authentication:Issuer` and `Authentication:Audience` are mandatory.
-- The current prototype accepts signed HS256 tokens only, requires an expiration time, validates issuer, audience, signature and lifetime, and allows 30 seconds of clock skew.
+- Two mutually exclusive JWT validation profiles are supported: a local HS256 profile using a private shared key, and an OIDC profile using HTTPS discovery/JWKS with RS256 or ES256 signatures. Both require expiration, validate issuer, audience, signature and lifetime, and allow 30 seconds of clock skew.
 - The signing key must contain at least 32 UTF-8 bytes.
 - The API preserves JWT claim names and requires both `tenant_id` and `sub` to be non-empty GUIDs. Invalid or missing identity claims fail authentication before a financial route runs.
 - Tenant identity comes from the validated token, never from a request body or query parameter.
@@ -33,20 +33,30 @@ Role catalog and grants are seeded by migration 0013. Do not assign a role based
 
 - No password login, account recovery, invitation, user lifecycle or identity-provider integration is implemented.
 - No token issuance, refresh-token rotation, logout/revocation list, MFA, SSO, SCIM or device/session administration is implemented.
-- The current HS256 signing key is a shared secret. This is a prototype trust configuration, not the preferred production identity architecture. Production should integrate with a trusted OIDC identity provider and validate asymmetric signatures/JWKS, with issuer/audience allowlists and managed key rotation.
+- The local HS256 signing key is a shared secret and is for development/test only. Production must configure `Authentication:Authority` to a trusted HTTPS OIDC authority and `Authentication:Audience` to the exact API audience; the API then validates asymmetric RS256/ES256 signatures using discovery/JWKS. Issuer must be supplied by trusted discovery metadata, and provider, audience allowlists and key rotation must be reviewed.
 - No role/membership administration UI or approval workflow exists yet.
 - The seeded administrator role is not assigned automatically. A fresh database has no users or company memberships provisioned by this migration.
 - The current database role and RLS setup still require production hardening, least-privilege grants, FORCE RLS verification and backup/restore rehearsal.
 
-## Required configuration for local API execution
+## Authentication configuration profiles
 
-Set these secrets privately (never commit them):
+Local Docker uses the HS256 development profile:
+
+- `Authentication__SigningKey`: at least 32 random bytes.
+- `Authentication__Issuer`: exact local issuer.
+- `Authentication__Audience`: exact API audience.
+
+For a trusted OIDC provider, configure `Authentication__Authority` as an absolute HTTPS discovery authority and `Authentication__Audience` as the API audience. Do not configure `Authentication__SigningKey` at the same time. The API reads signing keys from the provider JWKS endpoint and accepts RS256 or ES256. The provider must issue the required `tenant_id` and `sub` GUID claims, or an upstream claims transformation must add them from trusted identity data.
+
+## Required token claims
+
+For local HS256 development, set these secrets privately (never commit them):
 
 - `Authentication__SigningKey`: at least 32 random UTF-8 bytes.
 - `Authentication__Issuer`: exact expected token issuer.
 - `Authentication__Audience`: exact expected API audience.
 
-Tokens must be signed with HS256 and contain `iss`, `aud`, `exp`, `tenant_id` and `sub`. Tenant and subject claims must parse as non-empty GUIDs.
+Local-profile tokens must be signed with HS256. OIDC-profile tokens must use RS256 or ES256. Both must contain `iss`, `aud`, `exp`, `tenant_id` and `sub`. Tenant and subject claims must parse as non-empty GUIDs.
 
 ## Security verification
 
