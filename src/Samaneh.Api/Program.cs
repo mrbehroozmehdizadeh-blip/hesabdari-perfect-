@@ -136,7 +136,7 @@ if (authenticationConfigured)
         var code=input.Code?.Trim(); var name=input.Name?.Trim();
         var cls=input.AccountClass?.ToUpperInvariant(); var balance=input.NormalBalance?.ToUpperInvariant();
         var detail=(input.DetailMode ?? "NONE").ToUpperInvariant();
-        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name) || input.Level is < 1 or > 10 ||
+        if (string.IsNullOrWhiteSpace(code) || code.Length > 50 || string.IsNullOrWhiteSpace(name) || name.Length > 250 || input.Level is < 1 or > 10 ||
             !new[]{"ASSET","LIABILITY","EQUITY","REVENUE","EXPENSE"}.Contains(cls) ||
             !new[]{"DEBIT","CREDIT"}.Contains(balance) || !new[]{"NONE","FIXED","FLOATING"}.Contains(detail) ||
             (!input.IsPostable && detail!="NONE"))
@@ -149,24 +149,39 @@ if (authenticationConfigured)
         if ((input.Level==1 && input.ParentId is not null) || (input.Level>1 && input.ParentId is null))
             return Results.ValidationProblem(new Dictionary<string,string[]>{{"parentId",["والد با سطح حساب سازگار نیست."]}});
         if (input.ParentId is Guid pid) {
-            await using var pc=new NpgsqlCommand("SELECT account_level,is_postable FROM accounts WHERE tenant_id=@t AND company_id=@c AND id=@p",c,tx);
+            await using var pc=new NpgsqlCommand("SELECT account_level,is_postable,account_class FROM accounts WHERE tenant_id=@t AND company_id=@c AND id=@p FOR KEY SHARE",c,tx);
             pc.Parameters.AddWithValue("t",tenant); pc.Parameters.AddWithValue("c",companyId); pc.Parameters.AddWithValue("p",pid);
             await using var reader=await pc.ExecuteReaderAsync(ct);
-            if (!await reader.ReadAsync(ct) || reader.GetInt16(0)!=input.Level-1 || reader.GetBoolean(1))
-                return Results.ValidationProblem(new Dictionary<string,string[]>{{"parentId",["والد باید در همان شرکت، یک سطح بالاتر و غیرقابل ثبت باشد."]}});
+            if (!await reader.ReadAsync(ct) || reader.GetInt16(0)!=input.Level-1 || reader.GetBoolean(1) || reader.GetString(2)!=cls)
+                return Results.ValidationProblem(new Dictionary<string,string[]>{{"parentId",["والد باید در همان شرکت، یک سطح بالاتر، غیرقابل ثبت و هم‌طبقه با حساب جدید باشد."]}});
         }
         var id=Guid.NewGuid();
-        await using (var cmd=new NpgsqlCommand("""
-            INSERT INTO accounts(id,tenant_id,company_id,parent_account_id,account_code,account_name,account_level,
-              account_class,normal_balance,detail_mode,is_postable)
-            VALUES(@id,@t,@c,@p,@code,@name,@level,@class,@balance,@detail,@postable)
-            """,c,tx)) {
+        try
+        {
+            await using var cmd=new NpgsqlCommand("""
+                INSERT INTO accounts(id,tenant_id,company_id,parent_account_id,account_code,account_name,account_level,
+                  account_class,normal_balance,detail_mode,is_postable)
+                VALUES(@id,@t,@c,@p,@code,@name,@level,@class,@balance,@detail,@postable)
+                """,c,tx);
             cmd.Parameters.AddWithValue("id",id); cmd.Parameters.AddWithValue("t",tenant); cmd.Parameters.AddWithValue("c",companyId);
             cmd.Parameters.AddWithValue("p",(object?)input.ParentId??DBNull.Value); cmd.Parameters.AddWithValue("code",code!);
             cmd.Parameters.AddWithValue("name",name!); cmd.Parameters.AddWithValue("level",input.Level);
             cmd.Parameters.AddWithValue("class",cls!); cmd.Parameters.AddWithValue("balance",balance!);
             cmd.Parameters.AddWithValue("detail",detail); cmd.Parameters.AddWithValue("postable",input.IsPostable);
             await cmd.ExecuteNonQueryAsync(ct);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            return Results.Conflict(new { error = "کد حساب در این شرکت قبلاً استفاده شده است." });
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation ||
+                                           ex.SqlState == PostgresErrorCodes.CheckViolation ||
+                                           ex.SqlState == PostgresErrorCodes.RaiseException)
+        {
+            return Results.ValidationProblem(new Dictionary<string,string[]>
+            {
+                ["account"] = ["ساختار حساب با قواعد سلسله‌مراتب و محدودیت‌های پایگاه داده سازگار نیست."]
+            });
         }
         await using (var audit=new NpgsqlCommand("""
             INSERT INTO audit_events(tenant_id,company_id,actor_id,event_type,entity_type,entity_id,payload)
