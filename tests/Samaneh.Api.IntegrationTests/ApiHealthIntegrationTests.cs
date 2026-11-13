@@ -156,7 +156,6 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
     }
 
     [Fact]
-    [Fact]
     public async Task FinancialRoute_RejectsExpiredToken()
     {
         using var client = CreateAuthenticatedClient(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(),
