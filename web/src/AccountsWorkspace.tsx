@@ -76,7 +76,7 @@ export default function AccountsWorkspace() {
     return accounts.filter(a => !q || a.code.toLocaleLowerCase().includes(q) || a.name.toLocaleLowerCase().includes(q));
   }, [accounts, search]);
 
-  const parentOptions = accounts.filter(a => !a.isPostable && a.level === draft.level - 1 && a.isActive);
+  const parentOptions = accounts.filter(a => !a.isPostable && a.level === draft.level - 1 && a.isActive && a.accountClass === draft.accountClass);
 
   async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
