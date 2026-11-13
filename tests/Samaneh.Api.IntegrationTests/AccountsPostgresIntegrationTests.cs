@@ -36,20 +36,33 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
         await using var connection = await dataSource.OpenConnectionAsync();
         await using var transaction = await connection.BeginTransactionAsync();
 
-        await using (var seed = new NpgsqlCommand("""
+        await using (var tenant = new NpgsqlCommand("""
             INSERT INTO tenants(id, tenant_code, display_name)
-            VALUES (@tenant, @code, 'Account API integration test');
-            INSERT INTO companies(id, tenant_id, company_code, legal_name, functional_currency)
-            VALUES (@company, @tenant, 'MAIN', 'Account API integration test', 'IRR');
-            INSERT INTO company_memberships(tenant_id, company_id, user_id, role_code, is_active)
-            VALUES (@tenant, @company, @actor, 'FINANCE_ADMIN', true);
+            VALUES (@tenant, @code, 'Account API integration test')
             """, connection, transaction))
         {
-            seed.Parameters.AddWithValue("tenant", _tenantId);
-            seed.Parameters.AddWithValue("code", "ACCT-" + _tenantId.ToString("N"));
-            seed.Parameters.AddWithValue("company", _companyId);
-            seed.Parameters.AddWithValue("actor", _actorId);
-            await seed.ExecuteNonQueryAsync();
+            tenant.Parameters.AddWithValue("tenant", _tenantId);
+            tenant.Parameters.AddWithValue("code", "ACCT-" + _tenantId.ToString("N"));
+            await tenant.ExecuteNonQueryAsync();
+        }
+        await using (var company = new NpgsqlCommand("""
+            INSERT INTO companies(id, tenant_id, company_code, legal_name, functional_currency)
+            VALUES (@company, @tenant, 'MAIN', 'Account API integration test', 'IRR')
+            """, connection, transaction))
+        {
+            company.Parameters.AddWithValue("tenant", _tenantId);
+            company.Parameters.AddWithValue("company", _companyId);
+            await company.ExecuteNonQueryAsync();
+        }
+        await using (var membership = new NpgsqlCommand("""
+            INSERT INTO company_memberships(tenant_id, company_id, user_id, role_code, is_active)
+            VALUES (@tenant, @company, @actor, 'FINANCE_ADMIN', true)
+            """, connection, transaction))
+        {
+            membership.Parameters.AddWithValue("tenant", _tenantId);
+            membership.Parameters.AddWithValue("company", _companyId);
+            membership.Parameters.AddWithValue("actor", _actorId);
+            await membership.ExecuteNonQueryAsync();
         }
         await transaction.CommitAsync();
 
@@ -142,10 +155,20 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
 
         await using var dataSource = NpgsqlDataSource.Create(_connectionString);
         await using var connection = await dataSource.OpenConnectionAsync();
-        await using var command = new NpgsqlCommand(
-            "DELETE FROM tenants WHERE id=@tenant", connection);
-        command.Parameters.AddWithValue("tenant", _tenantId);
-        await command.ExecuteNonQueryAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        foreach (var statement in new[]
+        {
+            "DELETE FROM audit_events WHERE tenant_id=@tenant",
+            "DELETE FROM company_memberships WHERE tenant_id=@tenant",
+            "DELETE FROM companies WHERE tenant_id=@tenant",
+            "DELETE FROM tenants WHERE id=@tenant"
+        })
+        {
+            await using var command = new NpgsqlCommand(statement, connection, transaction);
+            command.Parameters.AddWithValue("tenant", _tenantId);
+            await command.ExecuteNonQueryAsync();
+        }
+        await transaction.CommitAsync();
     }
 
     private string CreateToken()
