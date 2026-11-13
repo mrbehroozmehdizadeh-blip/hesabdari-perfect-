@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import AccountsWorkspace from "./AccountsWorkspace";
 
 type ModuleKey = "overview" | "accounts" | "treasury" | "inventory" | "production" | "reports" | "audit";
 const modules: { key: ModuleKey; label: string; icon: string; status: string }[] = [
@@ -10,22 +11,10 @@ const modules: { key: ModuleKey; label: string; icon: string; status: string }[]
   { key: "reports", label: "گزارش‌های مدیریتی", icon: "▥", status: "در دست توسعه" },
   { key: "audit", label: "حسابرسی و کنترل داخلی", icon: "✓", status: "در دست توسعه" },
 ];
-const sampleAccounts = [
-  { code: "100", name: "دارایی‌های جاری", level: "کل", nature: "بدهکار", type: "گروه" },
-  { code: "110", name: "موجودی نقد و بانک", level: "معین", nature: "بدهکار", type: "گروه" },
-  { code: "11001", name: "صندوق ریالی", level: "تفصیلی", nature: "بدهکار", type: "ثابت" },
-  { code: "11002", name: "بانک‌های ریالی", level: "تفصیلی", nature: "بدهکار", type: "شناور" },
-  { code: "120", name: "حساب‌های دریافتنی", level: "معین", nature: "بدهکار", type: "گروه" },
-  { code: "200", name: "بدهی‌های جاری", level: "کل", nature: "بستانکار", type: "گروه" },
-  { code: "300", name: "حقوق مالکانه", level: "کل", nature: "بستانکار", type: "گروه" },
-  { code: "400", name: "درآمد عملیاتی", level: "کل", nature: "بستانکار", type: "گروه" },
-  { code: "500", name: "هزینه‌های عملیاتی", level: "کل", nature: "بدهکار", type: "گروه" },
-];
 const money = (n: number) => new Intl.NumberFormat("fa-IR").format(n) + " ریال";
 
 export default function App() {
   const [active, setActive] = useState<ModuleKey>("overview");
-  const [query, setQuery] = useState("");
   const [showInfo, setShowInfo] = useState(false);
   const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "unavailable">("checking");
   const [databaseStatus, setDatabaseStatus] = useState<"checking" | "connected" | "unavailable">("checking");
@@ -50,7 +39,6 @@ export default function App() {
       .catch(() => { if (active) setDatabaseStatus("unavailable"); });
     return () => { active = false; };
   }, []);
-  const filteredAccounts = useMemo(() => sampleAccounts.filter(a => (a.code + a.name).includes(query.trim())), [query]);
   const selected = modules.find(m => m.key === active)!;
   return <div className="app" dir="rtl">
     <aside className="sidebar">
@@ -73,7 +61,7 @@ export default function App() {
         <article className="panel"><div className="panel-head"><div><h3>وضعیت اجزای سامانه</h3><p>بر اساس مرحله توسعه</p></div></div><div className="module-list">{modules.slice(1).map(m=><button key={m.key} onClick={()=>setActive(m.key)}><span className="module-symbol">{m.icon}</span><span>{m.label}</span><small>{m.status}</small></button>)}</div></article></section>
         <section className="panel lower-panel"><div className="panel-head"><div><h3>اصول طراحی هسته مالی</h3><p>قواعدی که در ساخت سامانه رعایت می‌شوند</p></div></div><div className="principles"><span>محاسبات دقیق Decimal</span><span>دفترکل قابل ممیزی</span><span>تفکیک شرکت‌ها و دسترسی‌ها</span><span>تأیید انسانی عملیات حساس</span></div></section>
       </>}
-      {active === "accounts" && <section className="panel account-panel"><div className="panel-head"><div><h3>ساختار کدینگ حساب‌ها</h3><p>نمونه ساختار درختی؛ حداکثر ۱۰ سطح حساب</p></div><span className="tag">داده نمونه</span></div><div className="search-row"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="جست‌وجو در کد یا عنوان حساب..."/><span>{filteredAccounts.length} حساب نمونه</span></div><div className="table-wrap"><table><thead><tr><th>کد حساب</th><th>عنوان حساب</th><th>سطح</th><th>ماهیت</th><th>نوع تفصیلی</th></tr></thead><tbody>{filteredAccounts.map(a=><tr key={a.code}><td className="code">{a.code}</td><td>{a.name}</td><td>{a.level}</td><td>{a.nature}</td><td>{a.type}</td></tr>)}</tbody></table></div><div className="info-banner">این فهرست فقط داده نمونه است. اتصال سلامت API و PostgreSQL در اجرای Docker آزمایش می‌شود؛ دریافت و مدیریت کدینگ واقعی و ورود امن کاربران هنوز در دست توسعه است.</div></section>}
+      {active === "accounts" && <AccountsWorkspace />}
       {active !== "overview" && active !== "accounts" && <section className="panel coming"><div className="coming-icon">{selected.icon}</div><h2>ماژول {selected.label}</h2><span className="tag">در دست توسعه</span><p>ساختار این بخش در نقشه راه سامانه قرار دارد. تا زمان تکمیل منطق کسب‌وکار، API، کنترل دسترسی و آزمون‌ها، عملیات واقعی در این قسمت فعال نیست.</p><button onClick={()=>setActive("overview")}>بازگشت به داشبورد</button></section>}
       <footer className="footer"><span>سامانه مالی و جامع هوشمند</span><span>نسخه نمایشی مستقل از Floot · GitHub Pages</span></footer>
     </main>
