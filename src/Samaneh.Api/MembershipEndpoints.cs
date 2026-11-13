@@ -29,7 +29,7 @@ public static class MembershipEndpoints
 
         await using var cmd = new NpgsqlCommand("""
             SELECT id, target_user_id, requested_role_code, requested_by, request_status,
-                   reviewed_by, reviewed_at, reason, created_at
+                   reviewed_by, reviewed_at, reason, review_reason, created_at
               FROM membership_change_requests
              WHERE tenant_id=@tenant AND company_id=@company
              ORDER BY created_at DESC, id
@@ -52,7 +52,8 @@ public static class MembershipEndpoints
                     reviewedBy = reader.IsDBNull(5) ? (Guid?)null : reader.GetGuid(5),
                     reviewedAt = reader.IsDBNull(6) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(6),
                     reason = reader.GetString(7),
-                    createdAt = reader.GetFieldValue<DateTimeOffset>(8)
+                    reviewReason = reader.IsDBNull(8) ? null : reader.GetString(8),
+                    createdAt = reader.GetFieldValue<DateTimeOffset>(9)
                 });
         }
 
@@ -222,12 +223,13 @@ public static class MembershipEndpoints
         var status = approve ? "APPROVED" : "REJECTED";
         await using (var update = new NpgsqlCommand("""
             UPDATE membership_change_requests
-               SET request_status=@status, reviewed_by=@reviewer, reviewed_at=now()
+               SET request_status=@status, reviewed_by=@reviewer, reviewed_at=now(), review_reason=@reviewReason
              WHERE tenant_id=@tenant AND company_id=@company AND id=@id
                AND request_status='PENDING'
             """, c, tx))
         {
             update.Parameters.AddWithValue("status", status);
+            update.Parameters.AddWithValue("reviewReason", (object?)reviewReason ?? DBNull.Value);
             update.Parameters.AddWithValue("reviewer", reviewer);
             update.Parameters.AddWithValue("tenant", tenant);
             update.Parameters.AddWithValue("company", companyId);
