@@ -131,3 +131,21 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 }
+
+public sealed class OidcConfigurationIntegrationTests
+{
+    [Fact]
+    public async Task ApiStartsWithHttpsOidcAuthorityAndAudience()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Authentication:SigningKey", "");
+            builder.UseSetting("Authentication:Authority", "https://identity.example.test");
+            builder.UseSetting("Authentication:Audience", "samaneh-api");
+            builder.UseSetting("ConnectionStrings:Postgres", "");
+        });
+        using var client = factory.CreateClient();
+        using var response = await client.GetAsync("/");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+}
