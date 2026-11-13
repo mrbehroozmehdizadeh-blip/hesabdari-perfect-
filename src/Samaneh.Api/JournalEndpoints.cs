@@ -724,40 +724,7 @@ public static class JournalEndpoints
         return Results.Ok(new { journal = header, lines });
     }
 
-    private static async Task<bool> HasApprovalPermission(
-        NpgsqlConnection c, NpgsqlTransaction tx, Guid tenant, Guid company, Guid actor, CancellationToken ct)
-    {
-        await using var cmd = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1 FROM company_memberships
-                 WHERE tenant_id=@tenant AND company_id=@company AND user_id=@actor
-                   AND is_active=true AND role_code='FINANCE_APPROVER'
-            )
-            """, c, tx);
-        cmd.Parameters.AddWithValue("tenant", tenant);
-        cmd.Parameters.AddWithValue("company", company);
-        cmd.Parameters.AddWithValue("actor", actor);
-        return (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
-    }
-
-
-    private static async Task<bool> HasPostingPermission(
-        NpgsqlConnection c, NpgsqlTransaction tx, Guid tenant, Guid company, Guid actor, CancellationToken ct)
-    {
-        await using var cmd = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1 FROM company_memberships
-                 WHERE tenant_id=@tenant AND company_id=@company AND user_id=@actor
-                   AND is_active=true AND role_code='FINANCE_POSTER'
-            )
-            """, c, tx);
-        cmd.Parameters.AddWithValue("tenant", tenant);
-        cmd.Parameters.AddWithValue("company", company);
-        cmd.Parameters.AddWithValue("actor", actor);
-        return (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
-    }
-
-    private static async Task WriteAudit(
+            private static async Task WriteAudit(
         NpgsqlConnection c, NpgsqlTransaction tx, Guid tenant, Guid company, Guid actor,
         Guid journalId, string eventType, CancellationToken ct)
     {
@@ -782,22 +749,7 @@ public static class JournalEndpoints
                 principal.FindFirst(ClaimTypes.NameIdentifier)?.Value, out actor);
     }
 
-    private static async Task<bool> HasCompanyAccess(
-        NpgsqlConnection c, NpgsqlTransaction tx, Guid tenant, Guid company, Guid actor, CancellationToken ct)
-    {
-        await using var cmd = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1 FROM company_memberships
-                 WHERE tenant_id=@tenant AND company_id=@company AND user_id=@actor AND is_active=true
-            )
-            """, c, tx);
-        cmd.Parameters.AddWithValue("tenant", tenant);
-        cmd.Parameters.AddWithValue("company", company);
-        cmd.Parameters.AddWithValue("actor", actor);
-        return (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
-    }
-
-    private static async Task SetTenant(
+        private static async Task SetTenant(
         NpgsqlConnection c, NpgsqlTransaction tx, Guid tenant, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand("SELECT set_config('app.tenant_id',@tenant,true)", c, tx);
