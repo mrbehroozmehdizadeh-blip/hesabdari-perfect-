@@ -23,34 +23,55 @@ if (allowedOrigins.Length > 0)
 }
 
 var key = builder.Configuration["Authentication:SigningKey"];
-if (!string.IsNullOrWhiteSpace(key) && System.Text.Encoding.UTF8.GetByteCount(key) < 32)
-    throw new InvalidOperationException("Authentication:SigningKey must contain at least 32 UTF-8 bytes.");
-if (!string.IsNullOrWhiteSpace(key))
-{
-    var issuer = builder.Configuration["Authentication:Issuer"];
-    var audience = builder.Configuration["Authentication:Audience"];
-    if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
-        throw new InvalidOperationException("Authentication:Issuer and Authentication:Audience are required when JWT authentication is enabled.");
+var authority = builder.Configuration["Authentication:Authority"];
+var audience = builder.Configuration["Authentication:Audience"];
+var useOidc = !string.IsNullOrWhiteSpace(authority);
+var useLocalHmac = !string.IsNullOrWhiteSpace(key);
+var authenticationConfigured = useOidc || useLocalHmac;
 
+if (useOidc && useLocalHmac)
+    throw new InvalidOperationException("Configure either Authentication:Authority (OIDC) or Authentication:SigningKey (local HS256), not both.");
+if (useLocalHmac && System.Text.Encoding.UTF8.GetByteCount(key!) < 32)
+    throw new InvalidOperationException("Authentication:SigningKey must contain at least 32 UTF-8 bytes.");
+if (authenticationConfigured && string.IsNullOrWhiteSpace(audience))
+    throw new InvalidOperationException("Authentication:Audience is required when JWT authentication is enabled.");
+if (useLocalHmac && string.IsNullOrWhiteSpace(builder.Configuration["Authentication:Issuer"]))
+    throw new InvalidOperationException("Authentication:Issuer is required for local HS256 authentication.");
+if (useOidc && (!Uri.TryCreate(authority, UriKind.Absolute, out var authorityUri) || authorityUri.Scheme != Uri.UriSchemeHttps))
+    throw new InvalidOperationException("Authentication:Authority must be an absolute HTTPS OIDC authority.");
+
+if (authenticationConfigured)
+{
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
     {
-        // Preserve the exact JWT claim names used by the authorization boundary.
+        // OIDC obtains signing keys from discovery/JWKS; the local profile uses a
+        // private HS256 key and is intended only for development/test environments.
         o.MapInboundClaims = false;
         o.SaveToken = false;
         o.IncludeErrorDetails = false;
+        if (useOidc)
+        {
+            o.Authority = authority;
+            o.Audience = audience;
+            o.RequireHttpsMetadata = true;
+        }
         o.TokenValidationParameters = new()
         {
             RequireSignedTokens = true,
             RequireExpirationTime = true,
             ValidateIssuer = true,
-            ValidIssuer = issuer,
+            ValidIssuer = useLocalHmac ? builder.Configuration["Authentication:Issuer"] : null,
             ValidateAudience = true,
             ValidAudience = audience,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(key)),
+            IssuerSigningKey = useLocalHmac
+                ? new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(key!))
+                : null,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30),
-            ValidAlgorithms = [Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256]
+            ValidAlgorithms = useLocalHmac
+                ? [Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256]
+                : [Microsoft.IdentityModel.Tokens.SecurityAlgorithms.RsaSha256, Microsoft.IdentityModel.Tokens.SecurityAlgorithms.EcdsaSha256]
         };
         o.Events = new JwtBearerEvents
         {
@@ -83,7 +104,7 @@ app.MapGet("/health/db", async (IServiceProvider sp, CancellationToken ct) =>
     } catch (NpgsqlException) { return Results.Problem(title: "PostgreSQL connection failed", statusCode: 503); }
 });
 
-if (!string.IsNullOrWhiteSpace(key))
+if (authenticationConfigured)
 {
     var group = app.MapGroup("/api/companies/{companyId:guid}/accounts").RequireAuthorization();
     group.MapGet("/", async Task<IResult> (Guid companyId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
@@ -370,7 +391,7 @@ if (!string.IsNullOrWhiteSpace(key))
     CarryForwardReconciliationEndpoints.Map(app);
 }
 if (allowedOrigins.Length > 0) app.UseCors();
-if (!string.IsNullOrWhiteSpace(key)) { app.UseAuthentication(); app.UseAuthorization(); }
+if (authenticationConfigured) { app.UseAuthentication(); app.UseAuthorization(); }
 app.Run();
 
 static bool Identity(ClaimsPrincipal p,out Guid tenant,out Guid actor) {
