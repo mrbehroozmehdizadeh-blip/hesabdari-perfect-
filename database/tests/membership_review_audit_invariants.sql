@@ -28,6 +28,22 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Rejected requests must retain a non-empty reviewer rationale';
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid='membership_change_requests'::regclass
+           AND conname='ck_membership_request_no_self_target_review'
+    ) THEN
+        RAISE EXCEPTION 'A reviewer must not review a request targeting their own identity';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conrelid='membership_change_requests'::regclass
+           AND conname='ck_membership_request_no_finance_admin'
+    ) THEN
+        RAISE EXCEPTION 'FINANCE_ADMIN must remain outside ordinary membership requests';
+    END IF;
 END $$;
 
 ROLLBACK;
