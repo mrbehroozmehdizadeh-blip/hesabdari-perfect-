@@ -13,7 +13,7 @@
 - Approval and posting are separate permissions. The accountant role can prepare and submit a journal but cannot approve or post it. The approver cannot post; the poster cannot approve.
 - The seeded `FINANCE_ADMIN` role has every permission in the current catalog, but no end-user role assignment or user-administration endpoint is exposed yet.
 
-## Current role catalog
+## Membership governance baseline\n\nMigration 0015 adds a tenant-scoped request queue for creating or changing company memberships. Requests have PENDING, APPROVED or REJECTED states; the requester cannot review their own request, and only one pending request per target user/company is allowed. The `FINANCE_MEMBERSHIP_MANAGER` role can read and request changes; `FINANCE_MEMBERSHIP_REVIEWER` can read and review them. `FINANCE_ADMIN` receives all three membership permissions. Row-level security is enabled on the request table. These are database controls only: request/review API endpoints, user-directory verification, assignment audit events and operational provisioning remain to be implemented.\n\n## Current role catalog
 
 | Role | Intended boundary |
 |---|---|
@@ -25,7 +25,7 @@
 | `FINANCE_PERIOD_LOCKER` | Lock a closed fiscal period |
 | `FINANCE_OPENING_MANAGER` | Opening balances and carry-forward |
 | `FINANCE_YEAR_END_MANAGER` | Year-end closing draft |
-| `FINANCE_ADMIN` | All currently catalogued permissions |
+| `FINANCE_ADMIN` | All currently catalogued permissions |\n| `FINANCE_MEMBERSHIP_MANAGER` | Read memberships and request role changes |\n| `FINANCE_MEMBERSHIP_REVIEWER` | Read and independently review role-change requests |
 
 Role catalog and grants are seeded by migration 0013. Do not assign a role based on a browser-provided value. Membership provisioning must be an authenticated administrative workflow with audit history and maker-checker controls.
 
