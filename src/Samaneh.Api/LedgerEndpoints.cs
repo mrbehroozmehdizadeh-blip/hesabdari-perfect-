@@ -15,7 +15,7 @@ public static class LedgerEndpoints
             await using var c = await ds.OpenConnectionAsync(ct);
             await using var tx = await c.BeginTransactionAsync(ct);
             await SetTenant(c, tx, tenant, ct);
-            if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+            if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "LEDGER_READ", ct)) return Results.Forbid();
 
             await using (var period = new NpgsqlCommand("""
                 SELECT period_code, period_status FROM fiscal_periods
@@ -90,7 +90,7 @@ public static class LedgerEndpoints
             await using var c = await ds.OpenConnectionAsync(ct);
             await using var tx = await c.BeginTransactionAsync(ct);
             await SetTenant(c, tx, tenant, ct);
-            if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+            if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "LEDGER_READ", ct)) return Results.Forbid();
 
             var rows = new List<object>();
             long totalRows;
