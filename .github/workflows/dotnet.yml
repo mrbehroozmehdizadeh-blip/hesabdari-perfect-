@@ -40,7 +40,20 @@ jobs:
         run: dotnet restore Samaneh.sln
       - name: Build
         run: dotnet build Samaneh.sln --configuration Release --no-restore
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare PostgreSQL account API integration database
+        env:
+          PGPASSWORD: ci-test-password
+        run: |
+          psql -h localhost -U samaneh_ci -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE samaneh_api_test OWNER samaneh_ci"
+          for migration in database/migrations/*.sql; do
+            echo "Applying $migration to account API test database"
+            psql -h localhost -U samaneh_ci -d samaneh_api_test -v ON_ERROR_STOP=1 -f "$migration"
+          done
       - name: Test
+        env:
+          SAMANEH_ACCOUNT_TEST_CONNECTION: Host=localhost;Port=5432;Database=samaneh_api_test;Username=samaneh_ci;Password=ci-test-password
         run: dotnet test Samaneh.sln --configuration Release --no-build
       - name: Build API container image
         run: docker build -f src/Samaneh.Api/Dockerfile -t samaneh-api:ci .
@@ -73,8 +86,6 @@ jobs:
           AUTHENTICATION_SIGNING_KEY: ci-only-signing-key-with-at-least-32-bytes
           POSTGRES_HOST_PORT: 55432
         run: docker compose down --volumes
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Validate database migrations against PostgreSQL 18
         env:
           PGPASSWORD: ci-test-password
