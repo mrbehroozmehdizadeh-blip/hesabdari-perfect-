@@ -92,7 +92,7 @@ if (!string.IsNullOrWhiteSpace(key))
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await Tenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "ACCOUNTS_READ", ct)) return Results.Forbid();
         await using var cmd = new NpgsqlCommand("""
             SELECT id, account_code, account_name, account_level, parent_account_id, account_class,
                    normal_balance, detail_mode, is_postable, is_active
@@ -124,7 +124,7 @@ if (!string.IsNullOrWhiteSpace(key))
         await using var c=await ds.OpenConnectionAsync(ct);
         await using var tx=await c.BeginTransactionAsync(ct);
         await Tenant(c,tx,tenant,ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "ACCOUNTS_MANAGE", ct)) return Results.Forbid();
         if ((input.Level==1 && input.ParentId is not null) || (input.Level>1 && input.ParentId is null))
             return Results.ValidationProblem(new Dictionary<string,string[]>{{"parentId",["والد با سطح حساب سازگار نیست."]}});
         if (input.ParentId is Guid pid) {
@@ -168,7 +168,7 @@ if (!string.IsNullOrWhiteSpace(key))
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await Tenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "ACCOUNTS_MANAGE", ct)) return Results.Forbid();
         await using (var update = new NpgsqlCommand("""
             UPDATE accounts SET account_name=@name, is_active=@active
              WHERE tenant_id=@tenant AND company_id=@company AND id=@id
@@ -202,7 +202,7 @@ if (!string.IsNullOrWhiteSpace(key))
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await Tenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "ACCOUNTS_MANAGE", ct)) return Results.Forbid();
         await using (var lockAccount = new NpgsqlCommand("""
             SELECT account_code FROM accounts
              WHERE tenant_id=@tenant AND company_id=@company AND id=@id
@@ -259,7 +259,7 @@ if (!string.IsNullOrWhiteSpace(key))
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await Tenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "DIMENSIONS_READ", ct)) return Results.Forbid();
         await using var cmd = new NpgsqlCommand("""
             SELECT id, dimension_type, dimension_code, dimension_name, is_active
               FROM floating_dimensions
@@ -291,7 +291,7 @@ if (!string.IsNullOrWhiteSpace(key))
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await Tenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "DIMENSIONS_MANAGE", ct)) return Results.Forbid();
         var id = Guid.NewGuid();
         await using (var cmd = new NpgsqlCommand("""
             INSERT INTO floating_dimensions(id,tenant_id,company_id,dimension_type,dimension_code,dimension_name)
@@ -329,7 +329,7 @@ if (!string.IsNullOrWhiteSpace(key))
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await Tenant(c, tx, tenant, ct);
-        if (!await HasCompanyAccess(c, tx, tenant, companyId, actor, ct)) return Results.Forbid();
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "DIMENSIONS_MANAGE", ct)) return Results.Forbid();
         await using (var cmd = new NpgsqlCommand("""
             UPDATE floating_dimensions SET is_active=@active
              WHERE tenant_id=@tenant AND company_id=@company AND id=@id
