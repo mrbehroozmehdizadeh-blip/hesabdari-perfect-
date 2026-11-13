@@ -43,7 +43,7 @@ public static class YearEndClosingEndpoints
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await SetTenant(c, tx, tenant, ct);
-        if (!await HasRole(c, tx, tenant, companyId, actor, "FINANCE_YEAR_END_MANAGER", ct))
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "YEAR_END_CLOSE", ct))
             return Results.Forbid();
 
         await using (var existingKey = new NpgsqlCommand("""
