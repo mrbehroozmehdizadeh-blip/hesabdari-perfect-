@@ -389,6 +389,7 @@ if (authenticationConfigured)
     YearEndClosingEndpoints.Map(app);
     CarryForwardEndpoints.Map(app);
     CarryForwardReconciliationEndpoints.Map(app);
+    MembershipEndpoints.Map(app);
 }
 if (allowedOrigins.Length > 0) app.UseCors();
 if (authenticationConfigured) { app.UseAuthentication(); app.UseAuthorization(); }

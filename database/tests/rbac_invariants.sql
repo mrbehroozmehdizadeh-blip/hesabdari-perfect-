@@ -3,12 +3,12 @@ BEGIN;
 
 DO $$
 BEGIN
-    IF (SELECT count(*) FROM authorization_permissions) <> 18 THEN
-        RAISE EXCEPTION 'Expected 18 authorization permissions';
+    IF (SELECT count(*) FROM authorization_permissions) <> 21 THEN
+        RAISE EXCEPTION 'Expected 21 authorization permissions after membership governance';
     END IF;
 
-    IF (SELECT count(*) FROM company_roles) <> 9 THEN
-        RAISE EXCEPTION 'Expected 9 seeded finance roles';
+    IF (SELECT count(*) FROM company_roles) <> 11 THEN
+        RAISE EXCEPTION 'Expected 11 seeded finance roles after membership governance';
     END IF;
 
     IF (SELECT count(*) FROM role_permissions WHERE role_code='FINANCE_ADMIN')
