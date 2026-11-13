@@ -134,21 +134,4 @@ public static class FiscalPeriodEndpoints
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    private static async Task<bool> HasMembership(NpgsqlConnection c, NpgsqlTransaction tx,
-        Guid tenant, Guid company, Guid actor, string? role, CancellationToken ct)
-    {
-        await using var cmd = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1 FROM company_memberships
-                 WHERE tenant_id=@tenant AND company_id=@company
-                   AND user_id=@actor AND is_active=true
-                   AND (@role IS NULL OR role_code=@role)
-            )
-            """, c, tx);
-        cmd.Parameters.AddWithValue("tenant", tenant);
-        cmd.Parameters.AddWithValue("company", company);
-        cmd.Parameters.AddWithValue("actor", actor);
-        cmd.Parameters.AddWithValue("role", (object?)role ?? DBNull.Value);
-        return (bool)(await cmd.ExecuteScalarAsync(ct) ?? false);
     }
-}
