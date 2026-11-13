@@ -27,15 +27,26 @@ export default function App() {
   const [active, setActive] = useState<ModuleKey>("overview");
   const [query, setQuery] = useState("");
   const [showInfo, setShowInfo] = useState(false);
+  const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "unavailable">("checking");
   const [databaseStatus, setDatabaseStatus] = useState<"checking" | "connected" | "unavailable">("checking");
   useEffect(() => {
     let active = true;
+    fetch("/health", { headers: { Accept: "text/plain" } })
+      .then(response => {
+        if (!response.ok) throw new Error("API health endpoint unavailable");
+        if (active) setApiStatus("connected");
+      })
+      .catch(() => { if (active) setApiStatus("unavailable"); });
+
     fetch("/health/db", { headers: { Accept: "application/json" } })
       .then(response => {
         if (!response.ok) throw new Error("Database health endpoint unavailable");
         return response.json();
       })
-      .then(() => { if (active) setDatabaseStatus("connected"); })
+      .then(payload => {
+        if (active && payload?.status === "connected") setDatabaseStatus("connected");
+        else if (active) setDatabaseStatus("unavailable");
+      })
       .catch(() => { if (active) setDatabaseStatus("unavailable"); });
     return () => { active = false; };
   }, []);
@@ -46,11 +57,11 @@ export default function App() {
       <div className="brand"><div className="brand-mark">س</div><div><strong>سامانه مالی</strong><small>و جامع هوشمند</small></div></div>
       <div className="side-caption">فضای کاری</div>
       <nav>{modules.map(m => <button key={m.key} className={active === m.key ? "nav-item active" : "nav-item"} onClick={() => setActive(m.key)}><span className="nav-icon">{m.icon}</span><span>{m.label}</span>{m.key !== "overview" && m.key !== "accounts" && <i />}</button>)}</nav>
-      <div className="sidebar-bottom"><span className="live-dot" /> پیش‌نمایش رابط کاربری <small>{databaseStatus === "connected" ? "اتصال آزمایشی به API برقرار است" : "داده‌های مالی همچنان نمونه هستند"}</small></div>
+      <div className="sidebar-bottom"><span className="live-dot" /> پیش‌نمایش رابط کاربری <small>وضعیت API: {apiStatus === "connected" ? "در دسترس" : apiStatus === "checking" ? "در حال بررسی" : "غیردر‌دسترس"} · پایگاه داده: {databaseStatus === "connected" ? "متصل" : databaseStatus === "checking" ? "در حال بررسی" : "غیرمتصل"}</small></div>
     </aside>
     <main className="main">
-      <header className="topbar"><div><div className="breadcrumb">سامانه مالی <span>/</span> {selected.label}</div><h1>{active === "overview" ? "داشبورد مدیریت مالی" : selected.label}</h1></div><div className="top-actions"><span className={`api-status ${databaseStatus}`}>{databaseStatus === "checking" ? "در حال بررسی اتصال..." : databaseStatus === "connected" ? "API و PostgreSQL متصل" : "API متصل نیست"}</span><span className="period">دوره مالی: نمونه ۱۴۰۵</span><button className="help" onClick={() => setShowInfo(!showInfo)}>راهنمای وضعیت</button></div></header>
-      {showInfo && <div className="info-banner"><strong>شفافیت نسخه نمایشی:</strong> اطلاعات این صفحه ساختگی و صرفاً برای نمایش ظاهر و مسیرهای رابط کاربری است. در GitHub Pages اتصال backend وجود ندارد؛ در اجرای Docker، نشانگر اتصال، دسترسی API به PostgreSQL را آزمایش می‌کند. ارقام داشبورد و کدینگ حساب همچنان نمونه‌اند و هیچ سند یا تراکنش واقعی از این صفحه ثبت نمی‌شود.</div>}
+      <header className="topbar"><div><div className="breadcrumb">سامانه مالی <span>/</span> {selected.label}</div><h1>{active === "overview" ? "داشبورد مدیریت مالی" : selected.label}</h1></div><div className="top-actions"><span className={`api-status ${apiStatus}`}>API: {apiStatus === "checking" ? "در حال بررسی" : apiStatus === "connected" ? "در دسترس" : "غیردر‌دسترس"}</span><span className={`api-status ${databaseStatus}`}>PostgreSQL: {databaseStatus === "checking" ? "در حال بررسی" : databaseStatus === "connected" ? "متصل" : "غیرمتصل"}</span><span className="period">دوره مالی: نمونه ۱۴۰۵</span><button className="help" onClick={() => setShowInfo(!showInfo)}>راهنمای وضعیت</button></div></header>
+      {showInfo && <div className="info-banner"><strong>شفافیت نسخه نمایشی:</strong> اطلاعات این صفحه ساختگی و صرفاً برای نمایش ظاهر و مسیرهای رابط کاربری است. در GitHub Pages اتصال backend وجود ندارد؛ در اجرای Docker، دو نشانگر مستقل، سلامت API و اتصال API به PostgreSQL را آزمایش می‌کنند. ارقام داشبورد و کدینگ حساب همچنان نمونه‌اند و هیچ سند یا تراکنش واقعی از این صفحه ثبت نمی‌شود.</div>}
       {active === "overview" && <><section className="welcome"><div><span className="eyebrow">نمای مدیریتی یکپارچه</span><h2>تصویر روشن‌تری از وضعیت مالی سازمان</h2><p>زیرساخت یکپارچه حسابداری، عملیات و تحلیل مدیریتی در حال ساخت است.</p></div><div className="welcome-symbol">₪</div></section>
         <section className="metrics">
           <article className="metric"><span>دارایی‌ها</span><strong>{money(128450000000)}</strong><small>عدد نمونه نمایشی</small></article>
