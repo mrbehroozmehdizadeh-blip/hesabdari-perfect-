@@ -91,21 +91,31 @@ public static class MembershipEndpoints
 
         // Until a trusted user directory exists, only existing active company
         // members may receive a role-change request. Never provision an arbitrary GUID.
+        string currentRoleCode;
         await using (var target = new NpgsqlCommand("""
-            SELECT is_active
+            SELECT role_code, is_active
               FROM company_memberships
              WHERE tenant_id=@tenant AND company_id=@company AND user_id=@target
+             FOR UPDATE
             """, c, tx))
         {
             target.Parameters.AddWithValue("tenant", tenant);
             target.Parameters.AddWithValue("company", companyId);
             target.Parameters.AddWithValue("target", input.TargetUserId);
-            if (await target.ExecuteScalarAsync(ct) is not bool targetIsActive || !targetIsActive)
+            await using var targetReader = await target.ExecuteReaderAsync(ct);
+            if (!await targetReader.ReadAsync(ct) || !targetReader.GetBoolean(1))
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["targetUserId"] = ["تغییر نقش فقط برای کاربر دارای عضویت فعال در همین شرکت مجاز است."]
                 });
+            currentRoleCode = targetReader.GetString(0);
         }
+
+        if (string.Equals(currentRoleCode, roleCode, StringComparison.Ordinal))
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["requestedRoleCode"] = ["نقش درخواستی با نقش فعلی کاربر یکسان است."]
+            });
 
         await using (var role = new NpgsqlCommand("""
             SELECT is_active
