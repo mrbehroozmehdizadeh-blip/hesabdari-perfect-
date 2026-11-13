@@ -44,6 +44,28 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'FINANCE_ADMIN must remain outside ordinary membership requests';
     END IF;
-END $$;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_trigger t
+          JOIN pg_class r ON r.oid=t.tgrelid
+         WHERE r.relname='membership_change_requests'
+           AND t.tgname='trg_membership_change_requires_active_target'
+           AND NOT t.tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'Membership role-change requests must enforce an active target membership';
+    END IF;
+
+    IF position('is_active' IN pg_get_functiondef(
+        'require_active_membership_change_target()'::regprocedure
+    )) = 0 OR position('company_id' IN pg_get_functiondef(
+        'require_active_membership_change_target()'::regprocedure
+    )) = 0 OR position('tenant_id' IN pg_get_functiondef(
+        'require_active_membership_change_target()'::regprocedure
+    )) = 0 THEN
+        RAISE EXCEPTION 'Active target guard must scope by tenant, company and active status';
+    END IF;
+
+END $;
 
 ROLLBACK;
