@@ -92,15 +92,15 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    private HttpClient CreateAuthenticatedClient(string? tenantId, string? subject, string algorithm = "HS256")
+    private HttpClient CreateAuthenticatedClient(string? tenantId, string? subject, string algorithm = "HS256", string issuer = "samaneh-integration-tests", string audience = "samaneh-api", DateTimeOffset? expires = null)
     {
         var client = _configuredFactory.CreateClient();
         var header = Base64Url(JsonSerializer.Serialize(new { alg = algorithm, typ = "JWT" }));
         var payload = Base64Url(JsonSerializer.Serialize(new Dictionary<string, object?>
         {
-            ["iss"] = "samaneh-integration-tests",
-            ["aud"] = "samaneh-api",
-            ["exp"] = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds(),
+            ["iss"] = issuer,
+            ["aud"] = audience,
+            ["exp"] = (expires ?? DateTimeOffset.UtcNow.AddMinutes(5)).ToUnixTimeSeconds(),
             ["tenant_id"] = tenantId,
             ["sub"] = subject
         }));
