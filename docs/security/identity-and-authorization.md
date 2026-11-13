@@ -74,3 +74,11 @@ Local-profile tokens must be signed with HS256. OIDC-profile tokens must use RS2
 The integration suite checks anonymous access denial; missing tenant or subject claims; expired tokens; incorrect issuer or audience; disallowed signing algorithms; and malformed membership requests that must be rejected before any database operation. PostgreSQL CI executes migration 0013 and the rollback-only `database/tests/rbac_invariants.sql` checks for viewer read-only behavior and separation of journal approval from posting.
 
 Passing these checks is a development baseline, not a production security certification.
+
+## Local chart-of-accounts development access
+
+The Docker development stack serves the React application and proxies `/api/*` to the private ASP.NET Core API on the Docker network. The chart-of-accounts workspace calls the protected account endpoints for list, create, rename, activation/deactivation and guarded deletion. The browser keeps the supplied bearer token in component memory only; it does not persist the token in local storage.
+
+For local development only, `scripts/dev/Initialize-LocalCompany.ps1` creates a new tenant, company and `FINANCE_ADMIN` membership, writes a bootstrap audit event, and issues an eight-hour HS256 token using the local Compose signing key. It must be run only against the local development Compose database. The generated role and token are deliberately not a production identity workflow. Production must use a trusted HTTPS OIDC provider with asymmetric signing keys and a controlled user/company provisioning process.
+
+The static GitHub Pages preview does not have a backend and cannot use the live chart-of-accounts operations. The operational UI path is the local Docker web origin (or a separately deployed web origin configured with an approved API gateway and identity provider).
