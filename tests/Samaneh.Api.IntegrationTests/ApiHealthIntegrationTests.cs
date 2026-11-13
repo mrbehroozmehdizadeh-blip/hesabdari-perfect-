@@ -156,6 +156,53 @@ public sealed class ApiHealthIntegrationTests : IClassFixture<WebApplicationFact
     }
 
     [Fact]
+    [Fact]
+    public async Task FinancialRoute_RejectsExpiredToken()
+    {
+        using var client = CreateAuthenticatedClient(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(),
+            expires: DateTimeOffset.UtcNow.AddMinutes(-5));
+        using var response = await client.GetAsync($"/api/companies/{Guid.NewGuid()}/accounts/");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task FinancialRoute_RejectsWrongIssuer()
+    {
+        using var client = CreateAuthenticatedClient(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), issuer: "untrusted-issuer");
+        using var response = await client.GetAsync($"/api/companies/{Guid.NewGuid()}/accounts/");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task FinancialRoute_RejectsWrongAudience()
+    {
+        using var client = CreateAuthenticatedClient(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), audience: "another-api");
+        using var response = await client.GetAsync($"/api/companies/{Guid.NewGuid()}/accounts/");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AccountCreate_RejectsInvalidLevelBeforeDatabaseAccess()
+    {
+        using var client = CreateAuthenticatedClient(Guid.NewGuid().ToString(), Guid.NewGuid().ToString());
+        using var response = await client.PostAsJsonAsync(
+            $"/api/companies/{Guid.NewGuid()}/accounts/",
+            new { code = "101", name = "آزمون", level = 11, parentId = (Guid?)null,
+                accountClass = "ASSET", normalBalance = "DEBIT", detailMode = "NONE", isPostable = false });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AccountCreate_RejectsMissingCodeBeforeDatabaseAccess()
+    {
+        using var client = CreateAuthenticatedClient(Guid.NewGuid().ToString(), Guid.NewGuid().ToString());
+        using var response = await client.PostAsJsonAsync(
+            $"/api/companies/{Guid.NewGuid()}/accounts/",
+            new { code = " ", name = "آزمون", level = 1, parentId = (Guid?)null,
+                accountClass = "ASSET", normalBalance = "DEBIT", detailMode = "NONE", isPostable = false });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     public async Task DatabaseHealth_ReturnsServiceUnavailableWhenDatabaseIsNotConfigured()
     {
         using var response = await _client.GetAsync("/health/db");
