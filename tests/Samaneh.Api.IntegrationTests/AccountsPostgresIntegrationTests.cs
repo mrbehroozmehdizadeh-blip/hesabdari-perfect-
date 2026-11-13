@@ -160,6 +160,8 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
         {
             "DELETE FROM audit_events WHERE tenant_id=@tenant",
             "DELETE FROM company_memberships WHERE tenant_id=@tenant",
+            "DELETE FROM accounts WHERE tenant_id=@tenant AND parent_account_id IS NOT NULL",
+            "DELETE FROM accounts WHERE tenant_id=@tenant",
             "DELETE FROM companies WHERE tenant_id=@tenant",
             "DELETE FROM tenants WHERE id=@tenant"
         })
