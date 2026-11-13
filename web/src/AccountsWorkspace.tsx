@@ -1,4 +1,5 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 
 type Account = {
   id: string; code: string; name: string; level: number; parentId: string | null;
@@ -32,15 +33,11 @@ export default function AccountsWorkspace() {
 
   const configured = Boolean(companyId.trim() && token.trim());
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
-    const response = await fetch(path, {
-      ...init,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token.trim()}`,
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-        ...init.headers
-      }
-    });
+    const headers = new Headers(init.headers);
+    headers.set("Accept", "application/json");
+    headers.set("Authorization", `Bearer ${token.trim()}`);
+    if (init.body) headers.set("Content-Type", "application/json");
+    const response = await fetch(path, { ...init, headers });
     if (!response.ok) {
       let message = `خطای سرویس (HTTP ${response.status})`;
       try {
