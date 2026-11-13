@@ -49,7 +49,7 @@ export default function App() {
     </aside>
     <main className="main">
       <header className="topbar"><div><div className="breadcrumb">سامانه مالی <span>/</span> {selected.label}</div><h1>{active === "overview" ? "داشبورد مدیریت مالی" : selected.label}</h1></div><div className="top-actions"><span className={`api-status ${apiStatus}`}>API: {apiStatus === "checking" ? "در حال بررسی" : apiStatus === "connected" ? "در دسترس" : "غیردر‌دسترس"}</span><span className={`api-status ${databaseStatus}`}>PostgreSQL: {databaseStatus === "checking" ? "در حال بررسی" : databaseStatus === "connected" ? "متصل" : "غیرمتصل"}</span><span className="period">دوره مالی: نمونه ۱۴۰۵</span><button className="help" onClick={() => setShowInfo(!showInfo)}>راهنمای وضعیت</button></div></header>
-      {showInfo && <div className="info-banner"><strong>شفافیت نسخه نمایشی:</strong> اطلاعات این صفحه ساختگی و صرفاً برای نمایش ظاهر و مسیرهای رابط کاربری است. در GitHub Pages اتصال backend وجود ندارد؛ در اجرای Docker، دو نشانگر مستقل، سلامت API و اتصال API به PostgreSQL را آزمایش می‌کنند. ارقام داشبورد و کدینگ حساب همچنان نمونه‌اند و هیچ سند یا تراکنش واقعی از این صفحه ثبت نمی‌شود.</div>}
+      {showInfo && <div className="info-banner"><strong>شفافیت نسخه نمایشی:</strong> ارقام داشبورد و نمودارها نمونه نمایشی‌اند. در GitHub Pages اتصال backend وجود ندارد؛ در اجرای Docker، دو نشانگر مستقل سلامت API و اتصال PostgreSQL را آزمایش می‌کنند. صفحه کدینگ حساب‌ها در اجرای Docker با توکن معتبر، اطلاعات واقعی را از API دریافت و مدیریت می‌کند. سایر ماژول‌ها هنوز عملیاتی نیستند.</div>}
       {active === "overview" && <><section className="welcome"><div><span className="eyebrow">نمای مدیریتی یکپارچه</span><h2>تصویر روشن‌تری از وضعیت مالی سازمان</h2><p>زیرساخت یکپارچه حسابداری، عملیات و تحلیل مدیریتی در حال ساخت است.</p></div><div className="welcome-symbol">₪</div></section>
         <section className="metrics">
           <article className="metric"><span>دارایی‌ها</span><strong>{money(128450000000)}</strong><small>عدد نمونه نمایشی</small></article>
@@ -63,7 +63,7 @@ export default function App() {
       </>}
       {active === "accounts" && <AccountsWorkspace />}
       {active !== "overview" && active !== "accounts" && <section className="panel coming"><div className="coming-icon">{selected.icon}</div><h2>ماژول {selected.label}</h2><span className="tag">در دست توسعه</span><p>ساختار این بخش در نقشه راه سامانه قرار دارد. تا زمان تکمیل منطق کسب‌وکار، API، کنترل دسترسی و آزمون‌ها، عملیات واقعی در این قسمت فعال نیست.</p><button onClick={()=>setActive("overview")}>بازگشت به داشبورد</button></section>}
-      <footer className="footer"><span>سامانه مالی و جامع هوشمند</span><span>نسخه نمایشی مستقل از Floot · GitHub Pages</span></footer>
+      <footer className="footer"><span>سامانه مالی و جامع هوشمند</span><span>{window.location.hostname.endsWith("github.io") ? "پیش‌نمایش ایستا · GitHub Pages" : "اجرای محلی Docker · کدینگ متصل به API"}</span></footer>
     </main>
   </div>;
 }
