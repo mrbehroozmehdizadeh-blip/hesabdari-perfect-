@@ -58,3 +58,7 @@ The local Compose database uses a simplified development credential model. Do no
 - Migration 0013 introduces a centralized global role/permission catalog. API authorization resolves permissions from active membership + active role + role_permissions on every protected request. Role assignments are not accepted from request payloads or JWT role claims.
 - The initial role catalog separates finance viewing, accountant preparation, independent approval, independent posting, period close/lock, opening/carry-forward management, year-end closing and membership governance. The accountant role cannot approve or post; the approver role cannot post; the poster role cannot approve.
 - `database/tests/rbac_invariants.sql` and the membership governance SQL suites are rollback-only CI checks. Fine-grained authorization is enforced for account, dimension, journal, ledger, fiscal-period, opening-balance, year-end, carry-forward, reconciliation and membership routes.
+
+- Migration 0017 prohibits a membership manager from requesting a role change for their own identity; a second reviewer is required for any target membership change.
+- Migration 0018 stores the reviewer's decision rationale separately from the original request reason. Rejected requests require a non-empty reviewer reason, and the API returns that field in the request queue. Approval rationale remains optional.
+- `database/tests/membership_review_audit_invariants.sql` checks the requester/target separation and review-rationale schema constraints in PostgreSQL CI.
