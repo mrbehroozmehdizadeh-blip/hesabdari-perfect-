@@ -9,7 +9,7 @@
 - The API preserves JWT claim names and requires both `tenant_id` and `sub` to be non-empty GUIDs. Invalid or missing identity claims fail authentication before a financial route runs.
 - Tenant identity comes from the validated token, never from a request body or query parameter.
 - Every protected financial endpoint evaluates an active company membership and an explicit permission from the database role catalog. Role claims supplied by a client token are not used to grant finance permissions.
-- Permission evaluation joins the active membership, active company role and `role_permissions` grant. Missing roles or grants deny access.
+- Permission evaluation joins the active membership, active company role and `role_permissions` grant. Missing roles or grants deny access. Migration 0014 adds a validated database foreign key so every stored company membership must reference an existing catalog role; role renames/deletions are restricted while referenced.
 - Approval and posting are separate permissions. The accountant role can prepare and submit a journal but cannot approve or post it. The approver cannot post; the poster cannot approve.
 - The seeded `FINANCE_ADMIN` role has every permission in the current catalog, but no end-user role assignment or user-administration endpoint is exposed yet.
 
@@ -34,7 +34,7 @@ Role catalog and grants are seeded by migration 0013. Do not assign a role based
 - No password login, account recovery, invitation, user lifecycle or identity-provider integration is implemented.
 - No token issuance, refresh-token rotation, logout/revocation list, MFA, SSO, SCIM or device/session administration is implemented.
 - The local HS256 signing key is a shared secret and is for development/test only. Production must configure `Authentication:Authority` to a trusted HTTPS OIDC authority and `Authentication:Audience` to the exact API audience; the API then validates asymmetric RS256/ES256 signatures using discovery/JWKS. Issuer must be supplied by trusted discovery metadata, and provider, audience allowlists and key rotation must be reviewed.
-- No role/membership administration UI or approval workflow exists yet.
+- No role/membership administration UI or approval workflow exists yet. The database now enforces role-code referential integrity, but authorized provisioning, role-change approval, actor attribution and administrative audit events still require implementation.
 - The seeded administrator role is not assigned automatically. A fresh database has no users or company memberships provisioned by this migration.
 - The current database role and RLS setup still require production hardening, least-privilege grants, FORCE RLS verification and backup/restore rehearsal.
 
