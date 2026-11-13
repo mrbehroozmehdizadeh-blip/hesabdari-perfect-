@@ -77,6 +77,11 @@ public static class MembershipEndpoints
             {
                 ["request"] = ["شناسه کاربر، نقش درخواستی و علت معتبر الزامی است."]
             });
+        if (input.TargetUserId == actor)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["targetUserId"] = ["امکان ثبت درخواست تغییر نقش برای حساب خودتان وجود ندارد."]
+            });
 
         await using var c = await ds.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
