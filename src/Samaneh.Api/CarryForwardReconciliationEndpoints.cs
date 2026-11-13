@@ -28,17 +28,8 @@ public static class CarryForwardReconciliationEndpoints
             await set.ExecuteNonQueryAsync(ct);
         }
 
-        await using (var access = new NpgsqlCommand("""
-            SELECT EXISTS(SELECT 1 FROM company_memberships
-             WHERE tenant_id=@tenant AND company_id=@company AND user_id=@actor AND is_active=true)
-            """, c, tx))
-        {
-            access.Parameters.AddWithValue("tenant", tenant);
-            access.Parameters.AddWithValue("company", companyId);
-            access.Parameters.AddWithValue("actor", actor);
-            if ((bool)(await access.ExecuteScalarAsync(ct) ?? false) == false)
-                return Results.Forbid();
-        }
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "CARRY_FORWARD_RECONCILE", ct))
+            return Results.Forbid();
 
         Guid sourcePeriodId, targetPeriodId;
         DateOnly sourceEnd, targetStart;
