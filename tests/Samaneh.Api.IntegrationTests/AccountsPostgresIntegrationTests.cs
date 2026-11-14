@@ -78,6 +78,22 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AccountApi_DoesNotExposeCompanyToAnotherTenant()
+    {
+        if (_factory is null)
+            return;
+
+        // A validly signed identity from another tenant must not inherit access
+        // merely by knowing the target company's GUID.
+        using var foreignClient = _factory.CreateClient();
+        foreignClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", CreateToken(Guid.NewGuid(), Guid.NewGuid()));
+
+        using var response = await foreignClient.GetAsync($"/api/companies/{_companyId}/accounts/");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task AccountApi_SupportsReadCreateUpdateAndGuardedDeleteAgainstPostgres()
     {
         if (_client is null)
@@ -173,7 +189,7 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
         await transaction.CommitAsync();
     }
 
-    private string CreateToken()
+    private string CreateToken(Guid? tenantId = null, Guid? actorId = null)
     {
         static string Encode(byte[] value) =>
             Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -184,8 +200,8 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
             iss = Issuer,
             aud = Audience,
             exp = DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds(),
-            tenant_id = _tenantId,
-            sub = _actorId
+            tenant_id = tenantId ?? _tenantId,
+            sub = actorId ?? _actorId
         })));
         var unsigned = $"{header}.{payload}";
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(SigningKey));
