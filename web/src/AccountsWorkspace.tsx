@@ -71,10 +71,33 @@ export default function AccountsWorkspace() {
     setNotice("");
   }, [companyId, token]);
 
+  const accountById = useMemo(() => new Map(accounts.map(account => [account.id, account])), [accounts]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase();
-    return accounts.filter(a => !q || a.code.toLocaleLowerCase().includes(q) || a.name.toLocaleLowerCase().includes(q));
-  }, [accounts, search]);
+    return accounts
+      .filter(a => {
+        const parent = a.parentId ? accountById.get(a.parentId) : undefined;
+        return !q || a.code.toLocaleLowerCase().includes(q) ||
+          a.name.toLocaleLowerCase().includes(q) ||
+          Boolean(parent && (parent.code.toLocaleLowerCase().includes(q) || parent.name.toLocaleLowerCase().includes(q)));
+      })
+      .sort((a, b) => a.code.localeCompare(b.code, "fa"));
+  }, [accounts, search, accountById]);
+
+  function parentTrail(account: Account): string {
+    const parts: string[] = [];
+    let parentId = account.parentId;
+    const visited = new Set<string>([account.id]);
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = accountById.get(parentId);
+      if (!parent) break;
+      parts.unshift(`${parent.code} · ${parent.name}`);
+      parentId = parent.parentId;
+    }
+    return parts.join(" / ") || "—";
+  }
 
   const parentOptions = accounts.filter(a => !a.isPostable && a.level === draft.level - 1 && a.isActive && a.accountClass === draft.accountClass);
 
@@ -159,10 +182,10 @@ export default function AccountsWorkspace() {
       <div className="account-form-actions"><button className="primary-button" disabled={saving || !configured}>{saving ? "در حال ثبت..." : "ثبت در پایگاه داده"}</button><button type="button" className="secondary-button" onClick={()=>setShowCreate(false)}>انصراف</button></div>
     </form>}
     <div className="table-wrap"><table>
-      <thead><tr><th>کد حساب</th><th>عنوان حساب</th><th>سطح</th><th>طبقه</th><th>ماهیت</th><th>تفصیلی</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+      <thead><tr><th>کد حساب</th><th>عنوان حساب</th><th>حساب‌های بالادست</th><th>سطح</th><th>طبقه</th><th>ماهیت</th><th>تفصیلی</th><th>وضعیت</th><th>عملیات</th></tr></thead>
       <tbody>
         {filtered.map(a=><tr key={a.id}>
-          <td className="code">{a.code}</td><td>{a.name}</td><td>{a.level.toLocaleString("fa-IR")}</td>
+          <td className="code">{a.code}</td><td>{a.name}</td><td className="account-parent-trail">{parentTrail(a)}</td><td>{a.level.toLocaleString("fa-IR")}</td>
           <td>{classLabels[a.accountClass] ?? a.accountClass}</td><td>{a.normalBalance==="DEBIT"?"بدهکار":"بستانکار"}</td>
           <td>{detailLabels[a.detailMode] ?? a.detailMode}</td><td>{a.isActive?"فعال":"غیرفعال"}</td>
           <td><div className="account-row-actions">
@@ -171,7 +194,7 @@ export default function AccountsWorkspace() {
             <button disabled={saving} className="danger-button" onClick={()=>deleteAccount(a)}>حذف</button>
           </div></td>
         </tr>)}
-        {!filtered.length && <tr><td colSpan={8} className="empty-accounts">{configured ? (loading ? "در حال دریافت اطلاعات..." : "حسابی برای نمایش وجود ندارد؛ ابتدا اتصال را برقرار و دریافت را اجرا کنید.") : "برای مشاهده حساب‌های واقعی، شناسه شرکت و توکن معتبر را وارد کنید."}</td></tr>}
+        {!filtered.length && <tr><td colSpan={9} className="empty-accounts">{configured ? (loading ? "در حال دریافت اطلاعات..." : "حسابی برای نمایش وجود ندارد؛ ابتدا اتصال را برقرار و دریافت را اجرا کنید.") : "برای مشاهده حساب‌های واقعی، شناسه شرکت و توکن معتبر را وارد کنید."}</td></tr>}
       </tbody>
     </table></div>
     <p className="account-footnote">سطح والد باید دقیقاً یک درجه بالاتر باشد. حساب دارای فرزند یا گردش قابل حذف نیست. تمام عملیات تغییردهنده از کنترل دسترسی API عبور کرده و رویداد ممیزی ثبت می‌کنند. این صفحه در GitHub Pages به‌دلیل نداشتن backend قابل استفاده عملیاتی نیست؛ برای اتصال کامل از اجرای Docker سامانه استفاده می‌شود.</p>
