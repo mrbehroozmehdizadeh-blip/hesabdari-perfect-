@@ -185,7 +185,8 @@ export default function AccountsWorkspace() {
     } finally { setSaving(false); }
   }
 
-  return <>\n  <section className="panel account-panel">
+  return <>
+  <section className="panel account-panel">
     <div className="panel-head">
       <div><h3>کدینگ عملیاتی حساب‌ها</h3><p>دریافت و مدیریت مستقیم اطلاعات از API و PostgreSQL · حداکثر ۱۰ سطح</p></div>
       <span className="tag">اتصال زنده پس از احراز هویت</span>
