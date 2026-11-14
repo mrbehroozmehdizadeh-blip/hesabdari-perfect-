@@ -53,6 +53,29 @@ ON fixed_account_details
 FOR EACH ROW
 EXECUTE FUNCTION validate_fixed_detail_account();
 
+CREATE OR REPLACE FUNCTION protect_account_fixed_detail_mode()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM fixed_account_details
+         WHERE tenant_id = OLD.tenant_id
+           AND company_id = OLD.company_id
+           AND account_id = OLD.id
+    ) AND (NEW.detail_mode <> 'FIXED' OR NOT NEW.is_postable) THEN
+        RAISE EXCEPTION 'An account with fixed details must remain a posting account in FIXED detail mode';
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER trg_protect_account_fixed_detail_mode
+BEFORE UPDATE OF detail_mode, is_postable
+ON accounts
+FOR EACH ROW
+EXECUTE FUNCTION protect_account_fixed_detail_mode();
+
 CREATE TABLE journal_line_fixed_details (
     tenant_id uuid NOT NULL,
     company_id uuid NOT NULL,
