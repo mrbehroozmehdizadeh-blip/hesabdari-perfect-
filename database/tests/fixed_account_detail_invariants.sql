@@ -39,6 +39,14 @@ BEGIN
     END;
 
     BEGIN
+        UPDATE accounts SET detail_mode='FLOATING'
+         WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_fixed_account;
+        RAISE EXCEPTION 'expected fixed-detail mode protection failure';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM = 'expected fixed-detail mode protection failure' THEN RAISE; END IF;
+    END;
+
+    BEGIN
         INSERT INTO fixed_account_details(tenant_id, company_id, account_id, detail_code, detail_name)
         VALUES (v_tenant, v_company, v_fixed_account, '001', 'کد تکراری');
         RAISE EXCEPTION 'expected fixed-detail duplicate-code failure';
