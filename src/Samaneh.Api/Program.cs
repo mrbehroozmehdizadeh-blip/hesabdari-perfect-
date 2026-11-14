@@ -288,6 +288,131 @@ if (authenticationConfigured)
     });
 
 
+    var fixedDetails = app.MapGroup("/api/companies/{companyId:guid}/accounts/{accountId:guid}/fixed-details").RequireAuthorization();
+    fixedDetails.MapGet("/", async Task<IResult> (Guid companyId, Guid accountId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
+    {
+        if (!Identity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await Tenant(c, tx, tenant, ct);
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "ACCOUNTS_READ", ct)) return Results.Forbid();
+        await using var cmd = new NpgsqlCommand("""
+            SELECT id, detail_code, detail_name, is_active
+              FROM fixed_account_details
+             WHERE tenant_id=@tenant AND company_id=@company AND account_id=@account
+             ORDER BY detail_code
+            """, c, tx);
+        cmd.Parameters.AddWithValue("tenant", tenant);
+        cmd.Parameters.AddWithValue("company", companyId);
+        cmd.Parameters.AddWithValue("account", accountId);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var rows = new List<object>();
+        while (await reader.ReadAsync(ct))
+            rows.Add(new { id=reader.GetGuid(0), code=reader.GetString(1), name=reader.GetString(2), isActive=reader.GetBoolean(3) });
+        await reader.CloseAsync();
+        await tx.CommitAsync(ct);
+        return Results.Ok(rows);
+    });
+
+    fixedDetails.MapPost("/", async Task<IResult> (Guid companyId, Guid accountId, CreateFixedAccountDetail input, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
+    {
+        if (!Identity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
+        var code = input.Code?.Trim();
+        var name = input.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(code) || code.Length > 60 || string.IsNullOrWhiteSpace(name) || name.Length > 250)
+            return Results.ValidationProblem(new Dictionary<string,string[]> { ["fixedDetail"] = ["کد و عنوان تفصیلی ثابت معتبر نیست."] });
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await Tenant(c, tx, tenant, ct);
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "ACCOUNTS_MANAGE", ct)) return Results.Forbid();
+        await using (var account = new NpgsqlCommand("""
+            SELECT 1 FROM accounts
+             WHERE tenant_id=@tenant AND company_id=@company AND id=@account
+               AND detail_mode='FIXED' AND is_postable AND is_active
+             FOR KEY SHARE
+            """, c, tx))
+        {
+            account.Parameters.AddWithValue("tenant", tenant);
+            account.Parameters.AddWithValue("company", companyId);
+            account.Parameters.AddWithValue("account", accountId);
+            if (await account.ExecuteScalarAsync(ct) is null)
+                return Results.ValidationProblem(new Dictionary<string,string[]> { ["accountId"] = ["حساب باید فعال، قابل ثبت و دارای نوع تفصیلی ثابت باشد."] });
+        }
+        var id = Guid.NewGuid();
+        try
+        {
+            await using var insert = new NpgsqlCommand("""
+                INSERT INTO fixed_account_details(id,tenant_id,company_id,account_id,detail_code,detail_name)
+                VALUES(@id,@tenant,@company,@account,@code,@name)
+                """, c, tx);
+            insert.Parameters.AddWithValue("id", id);
+            insert.Parameters.AddWithValue("tenant", tenant);
+            insert.Parameters.AddWithValue("company", companyId);
+            insert.Parameters.AddWithValue("account", accountId);
+            insert.Parameters.AddWithValue("code", code!);
+            insert.Parameters.AddWithValue("name", name!);
+            await insert.ExecuteNonQueryAsync(ct);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            return Results.Conflict(new { error = "کد تفصیلی در این حساب قبلاً استفاده شده است." });
+        }
+        await using (var audit = new NpgsqlCommand("""
+            INSERT INTO audit_events(tenant_id,company_id,actor_id,event_type,entity_type,entity_id,payload)
+            VALUES(@tenant,@company,@actor,'FIXED_DETAIL_CREATED','FIXED_ACCOUNT_DETAIL',@id,
+                   jsonb_build_object('accountId',@account,'code',@code))
+            """, c, tx))
+        {
+            audit.Parameters.AddWithValue("tenant", tenant);
+            audit.Parameters.AddWithValue("company", companyId);
+            audit.Parameters.AddWithValue("actor", actor);
+            audit.Parameters.AddWithValue("id", id);
+            audit.Parameters.AddWithValue("account", accountId);
+            audit.Parameters.AddWithValue("code", code!);
+            await audit.ExecuteNonQueryAsync(ct);
+        }
+        await tx.CommitAsync(ct);
+        return Results.Created($"/api/companies/{companyId}/accounts/{accountId}/fixed-details/{id}",
+            new { id, code, name, isActive = true });
+    });
+
+    fixedDetails.MapPatch("/{detailId:guid}/active", async Task<IResult> (Guid companyId, Guid accountId, Guid detailId, SetDimensionActive input, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
+    {
+        if (!Identity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await Tenant(c, tx, tenant, ct);
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "ACCOUNTS_MANAGE", ct)) return Results.Forbid();
+        await using var cmd = new NpgsqlCommand("""
+            UPDATE fixed_account_details SET is_active=@active
+             WHERE tenant_id=@tenant AND company_id=@company AND account_id=@account AND id=@id
+            RETURNING detail_code
+            """, c, tx);
+        cmd.Parameters.AddWithValue("active", input.IsActive);
+        cmd.Parameters.AddWithValue("tenant", tenant);
+        cmd.Parameters.AddWithValue("company", companyId);
+        cmd.Parameters.AddWithValue("account", accountId);
+        cmd.Parameters.AddWithValue("id", detailId);
+        var code = await cmd.ExecuteScalarAsync(ct) as string;
+        if (code is null) return Results.NotFound();
+        await using (var audit = new NpgsqlCommand("""
+            INSERT INTO audit_events(tenant_id,company_id,actor_id,event_type,entity_type,entity_id,payload)
+            VALUES(@tenant,@company,@actor,'FIXED_DETAIL_ACTIVE_CHANGED','FIXED_ACCOUNT_DETAIL',@id,
+                   jsonb_build_object('isActive',@active,'accountId',@account))
+            """, c, tx))
+        {
+            audit.Parameters.AddWithValue("tenant", tenant);
+            audit.Parameters.AddWithValue("company", companyId);
+            audit.Parameters.AddWithValue("actor", actor);
+            audit.Parameters.AddWithValue("id", detailId);
+            audit.Parameters.AddWithValue("active", input.IsActive);
+            audit.Parameters.AddWithValue("account", accountId);
+            await audit.ExecuteNonQueryAsync(ct);
+        }
+        await tx.CommitAsync(ct);
+        return Results.Ok(new { id = detailId, code, isActive = input.IsActive });
+    });
+
     var dimensions = app.MapGroup("/api/companies/{companyId:guid}/dimensions").RequireAuthorization();
     dimensions.MapGet("/", async Task<IResult> (Guid companyId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
     {
@@ -422,5 +547,6 @@ static async Task Tenant(NpgsqlConnection c,NpgsqlTransaction tx,Guid id,Cancell
 public sealed record CreateAccount(string? Code,string? Name,int Level,Guid? ParentId,string? AccountClass,string? NormalBalance,string? DetailMode,bool IsPostable);
 public sealed record UpdateAccount(string? Name, bool IsActive);
 public sealed record CreateDimension(string? Type, string? Code, string? Name);
+public sealed record CreateFixedAccountDetail(string? Code, string? Name);
 public sealed record SetDimensionActive(bool IsActive);
 public partial class Program { }
