@@ -168,6 +168,29 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
             childId = payload.RootElement.GetProperty("id").GetGuid();
         }
 
+        var fixedDetailsRoute = route + childId + "/fixed-details/";
+        Guid fixedDetailId;
+        using (var fixedDetail = await _client.PostAsJsonAsync(fixedDetailsRoute, new { code = "BR-001", name = "شعبه مرکزی" }))
+        {
+            Assert.Equal(HttpStatusCode.Created, fixedDetail.StatusCode);
+            using var payload = JsonDocument.Parse(await fixedDetail.Content.ReadAsStringAsync());
+            fixedDetailId = payload.RootElement.GetProperty("id").GetGuid();
+        }
+
+        using (var fixedDetailList = await _client.GetAsync(fixedDetailsRoute))
+        {
+            Assert.Equal(HttpStatusCode.OK, fixedDetailList.StatusCode);
+            var rows = await fixedDetailList.Content.ReadFromJsonAsync<JsonElement[]>();
+            Assert.NotNull(rows);
+            Assert.Single(rows);
+        }
+
+        using (var duplicateFixedDetail = await _client.PostAsJsonAsync(fixedDetailsRoute, new { code = "BR-001", name = "کد تکراری" }))
+            Assert.Equal(HttpStatusCode.Conflict, duplicateFixedDetail.StatusCode);
+
+        using (var deactivateFixedDetail = await _client.PatchAsJsonAsync(fixedDetailsRoute + fixedDetailId + "/active", new { isActive = false }))
+            Assert.Equal(HttpStatusCode.OK, deactivateFixedDetail.StatusCode);
+
         using (var duplicate = await _client.PostAsJsonAsync(route, new
         {
             code = "100", name = "کد تکراری", level = 1, parentId = (Guid?)null,
@@ -211,6 +234,7 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
         foreach (var statement in new[]
         {
             "DELETE FROM audit_events WHERE tenant_id=@tenant",
+            "DELETE FROM fixed_account_details WHERE tenant_id=@tenant",
             "DELETE FROM company_memberships WHERE tenant_id=@tenant",
             "DELETE FROM accounts WHERE tenant_id=@tenant AND parent_account_id IS NOT NULL",
             "DELETE FROM accounts WHERE tenant_id=@tenant",
