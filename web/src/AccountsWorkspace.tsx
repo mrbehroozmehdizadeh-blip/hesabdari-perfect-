@@ -7,6 +7,7 @@ type Account = {
 };
 type Dimension = { id: string; type: string; code: string; name: string; isActive: boolean };
 type DimensionDraft = { type: string; code: string; name: string };
+type FixedDetail = { id: string; code: string; name: string; isActive: boolean };
 type Draft = {
   code: string; name: string; level: number; parentId: string; accountClass: string;
   normalBalance: string; detailMode: string; isPostable: boolean;
@@ -34,6 +35,9 @@ export default function AccountsWorkspace() {
   const [notice, setNotice] = useState("");
   const [dimensions, setDimensions] = useState<Dimension[]>([]);
   const [dimensionDraft, setDimensionDraft] = useState<DimensionDraft>({ type: "CUSTOMER", code: "", name: "" });
+  const [selectedFixedAccountId, setSelectedFixedAccountId] = useState("");
+  const [fixedDetails, setFixedDetails] = useState<FixedDetail[]>([]);
+  const [fixedDetailDraft, setFixedDetailDraft] = useState({ code: "", name: "" });
 
   const configured = Boolean(companyId.trim() && token.trim());
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -108,6 +112,51 @@ export default function AccountsWorkspace() {
   }
 
   const parentOptions = accounts.filter(a => !a.isPostable && a.level === draft.level - 1 && a.isActive && a.accountClass === draft.accountClass);
+
+  const fixedAccounts = accounts.filter(a => a.isPostable && a.detailMode === "FIXED");
+
+  const loadFixedDetails = useCallback(async () => {
+    if (!configured || !selectedFixedAccountId) { setFixedDetails([]); return; }
+    try {
+      const rows = await request(`/api/companies/${encodeURIComponent(companyId.trim())}/accounts/${selectedFixedAccountId}/fixed-details/`);
+      setFixedDetails(Array.isArray(rows) ? rows as FixedDetail[] : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "دریافت تفصیلی‌های ثابت ناموفق بود.");
+      setFixedDetails([]);
+    }
+  }, [companyId, configured, request, selectedFixedAccountId]);
+
+  useEffect(() => { void loadFixedDetails(); }, [loadFixedDetails]);
+
+  async function createFixedDetail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedFixedAccountId) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      await request(`/api/companies/${encodeURIComponent(companyId.trim())}/accounts/${selectedFixedAccountId}/fixed-details/`, {
+        method: "POST", body: JSON.stringify(fixedDetailDraft)
+      });
+      setFixedDetailDraft({ code: "", name: "" });
+      setNotice("تفصیلی ثابت به حساب انتخاب‌شده افزوده شد.");
+      await loadFixedDetails();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ثبت تفصیلی ثابت ناموفق بود.");
+    } finally { setSaving(false); }
+  }
+
+  async function toggleFixedDetail(detail: FixedDetail) {
+    if (!selectedFixedAccountId) return;
+    setSaving(true); setError(""); setNotice("");
+    try {
+      await request(`/api/companies/${encodeURIComponent(companyId.trim())}/accounts/${selectedFixedAccountId}/fixed-details/${detail.id}/active`, {
+        method: "PATCH", body: JSON.stringify({ isActive: !detail.isActive })
+      });
+      setNotice("وضعیت تفصیلی ثابت تغییر کرد.");
+      await loadFixedDetails();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تغییر وضعیت تفصیلی ثابت ناموفق بود.");
+    } finally { setSaving(false); }
+  }
 
   async function createDimension(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -256,7 +305,34 @@ export default function AccountsWorkspace() {
           {!dimensions.length && <tr><td colSpan={5} className="empty-accounts">بُعد تحلیلی ثبت‌شده‌ای وجود ندارد یا هنوز اطلاعات دریافت نشده است.</td></tr>}
         </tbody>
       </table></div>
-      <p className="account-footnote">این بخش فهرست تفصیلی‌های شناور و ابعاد تحلیلی را مدیریت می‌کند. تفصیلی ثابتِ اختصاص‌یافته به هر حساب هنوز به مدل رابطه‌ای مستقل و قواعد انتخاب و اعتبارسنجی نیاز دارد؛ این دو مفهوم عمداً یکی نشده‌اند.</p>
+      <p className="account-footnote">این بخش فهرست تفصیلی‌های شناور و ابعاد تحلیلی را مدیریت می‌کند؛ این اطلاعات مستقل از کدینگ حساب‌ها نگهداری می‌شوند.</p>
+    </section>
+    <section className="panel account-panel">
+      <div className="panel-head">
+        <div><h3>تفصیلی ثابت اختصاصی حساب</h3><p>هر تفصیلی ثابت فقط به یک حساب معین تعلق دارد و قابل انتقال به حساب دیگر نیست.</p></div>
+        <span className="tag">رابطه مستقل در پایگاه داده</span>
+      </div>
+      <label>انتخاب حساب دارای تفصیلی ثابت
+        <select value={selectedFixedAccountId} onChange={e=>setSelectedFixedAccountId(e.target.value)} disabled={!fixedAccounts.length}>
+          <option value="">انتخاب حساب...</option>
+          {fixedAccounts.map(a=><option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+        </select>
+      </label>
+      <form className="account-create-form" onSubmit={createFixedDetail}>
+        <div className="account-form-grid">
+          <label>کد تفصیلی<input required maxLength={60} value={fixedDetailDraft.code} onChange={e=>setFixedDetailDraft({...fixedDetailDraft,code:e.target.value})} /></label>
+          <label>عنوان تفصیلی<input required maxLength={250} value={fixedDetailDraft.name} onChange={e=>setFixedDetailDraft({...fixedDetailDraft,name:e.target.value})} /></label>
+        </div>
+        <div className="account-form-actions"><button className="primary-button" disabled={!configured || !selectedFixedAccountId || saving}>ثبت تفصیلی ثابت</button></div>
+      </form>
+      <div className="table-wrap"><table>
+        <thead><tr><th>کد</th><th>عنوان</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+        <tbody>
+          {fixedDetails.map(d=><tr key={d.id}><td className="code">{d.code}</td><td>{d.name}</td><td>{d.isActive?"فعال":"غیرفعال"}</td><td><button disabled={saving} onClick={()=>toggleFixedDetail(d)}>{d.isActive?"غیرفعال‌سازی":"فعال‌سازی"}</button></td></tr>)}
+          {!fixedDetails.length && <tr><td colSpan={4} className="empty-accounts">{selectedFixedAccountId ? "برای این حساب تفصیلی ثابتی ثبت نشده است." : "ابتدا یک حساب با نوع تفصیلی ثابت انتخاب کنید."}</td></tr>}
+        </tbody>
+      </table></div>
+      <p className="account-footnote">ثبت و فعال‌سازی تفصیلی ثابت از API مجوزدار انجام می‌شود. اتصال اجباری تفصیلی به خطوط سند و کنترل کامل آن هنگام ثبت قطعی، در مرحله بعدی چرخه اسناد تکمیل خواهد شد.</p>
     </section>
   </>;
 }
