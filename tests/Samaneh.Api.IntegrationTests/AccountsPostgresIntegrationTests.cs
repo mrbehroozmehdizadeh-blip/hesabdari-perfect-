@@ -94,6 +94,42 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AccountApi_ReadOnlyRoleCanReadButCannotMutate()
+    {
+        if (_factory is null || string.IsNullOrWhiteSpace(_connectionString))
+            return;
+
+        var readerId = Guid.NewGuid();
+        await using (var dataSource = NpgsqlDataSource.Create(_connectionString))
+        await using (var connection = await dataSource.OpenConnectionAsync())
+        await using (var command = new NpgsqlCommand("""
+            INSERT INTO company_memberships(tenant_id, company_id, user_id, role_code, is_active)
+            VALUES (@tenant, @company, @actor, 'FINANCE_VIEWER', true)
+            """, connection))
+        {
+            command.Parameters.AddWithValue("tenant", _tenantId);
+            command.Parameters.AddWithValue("company", _companyId);
+            command.Parameters.AddWithValue("actor", readerId);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        using var readerClient = _factory.CreateClient();
+        readerClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", CreateToken(_tenantId, readerId));
+
+        var route = $"/api/companies/{_companyId}/accounts/";
+        using (var read = await readerClient.GetAsync(route))
+            Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+
+        using var write = await readerClient.PostAsJsonAsync(route, new
+        {
+            code = "VIEWER-001", name = "نباید ثبت شود", level = 1, parentId = (Guid?)null,
+            accountClass = "ASSET", normalBalance = "DEBIT", detailMode = "NONE", isPostable = false
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
+    }
+
+    [Fact]
     public async Task AccountApi_SupportsReadCreateUpdateAndGuardedDeleteAgainstPostgres()
     {
         if (_client is null)
