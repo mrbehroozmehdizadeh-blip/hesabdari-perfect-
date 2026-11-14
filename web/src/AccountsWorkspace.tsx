@@ -5,6 +5,8 @@ type Account = {
   id: string; code: string; name: string; level: number; parentId: string | null;
   accountClass: string; normalBalance: string; detailMode: string; isPostable: boolean; isActive: boolean;
 };
+type Dimension = { id: string; type: string; code: string; name: string; isActive: boolean };
+type DimensionDraft = { type: string; code: string; name: string };
 type Draft = {
   code: string; name: string; level: number; parentId: string; accountClass: string;
   normalBalance: string; detailMode: string; isPostable: boolean;
@@ -30,6 +32,8 @@ export default function AccountsWorkspace() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [dimensions, setDimensions] = useState<Dimension[]>([]);
+  const [dimensionDraft, setDimensionDraft] = useState<DimensionDraft>({ type: "CUSTOMER", code: "", name: "" });
 
   const configured = Boolean(companyId.trim() && token.trim());
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -58,15 +62,19 @@ export default function AccountsWorkspace() {
       const rows = await request(`/api/companies/${encodeURIComponent(companyId.trim())}/accounts/`);
       if (!Array.isArray(rows)) throw new Error("پاسخ سرویس کدینگ حساب‌ها معتبر نیست.");
       setAccounts(rows as Account[]);
-      setNotice(`فهرست ${rows.length.toLocaleString("fa-IR")} حساب از پایگاه داده دریافت شد.`);
+      const dimensionRows = await request(`/api/companies/${encodeURIComponent(companyId.trim())}/dimensions/`);
+      setDimensions(Array.isArray(dimensionRows) ? dimensionRows as Dimension[] : []);
+      setNotice(`فهرست ${rows.length.toLocaleString("fa-IR")} حساب و ${Array.isArray(dimensionRows) ? dimensionRows.length.toLocaleString("fa-IR") : "۰"} بُعد تحلیلی از پایگاه داده دریافت شد.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "دریافت کدینگ حساب‌ها ناموفق بود.");
       setAccounts([]);
+      setDimensions([]);
     } finally { setLoading(false); }
   }, [companyId, configured, request]);
 
   useEffect(() => {
     setAccounts([]);
+    setDimensions([]);
     setError("");
     setNotice("");
   }, [companyId, token]);
@@ -100,6 +108,34 @@ export default function AccountsWorkspace() {
   }
 
   const parentOptions = accounts.filter(a => !a.isPostable && a.level === draft.level - 1 && a.isActive && a.accountClass === draft.accountClass);
+
+  async function createDimension(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true); setError(""); setNotice("");
+    try {
+      await request(`/api/companies/${encodeURIComponent(companyId.trim())}/dimensions/`, {
+        method: "POST", body: JSON.stringify(dimensionDraft)
+      });
+      setDimensionDraft({ ...dimensionDraft, code: "", name: "" });
+      setNotice("بُعد تحلیلی در پایگاه داده ثبت شد.");
+      await loadAccounts();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ثبت بُعد تحلیلی ناموفق بود.");
+    } finally { setSaving(false); }
+  }
+
+  async function setDimensionActive(dimension: Dimension) {
+    setSaving(true); setError(""); setNotice("");
+    try {
+      await request(`/api/companies/${encodeURIComponent(companyId.trim())}/dimensions/${dimension.id}/active`, {
+        method: "PATCH", body: JSON.stringify({ isActive: !dimension.isActive })
+      });
+      setNotice("وضعیت بُعد تحلیلی تغییر کرد.");
+      await loadAccounts();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تغییر وضعیت بُعد تحلیلی ناموفق بود.");
+    } finally { setSaving(false); }
+  }
 
   async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -149,7 +185,7 @@ export default function AccountsWorkspace() {
     } finally { setSaving(false); }
   }
 
-  return <section className="panel account-panel">
+  return <>\n  <section className="panel account-panel">
     <div className="panel-head">
       <div><h3>کدینگ عملیاتی حساب‌ها</h3><p>دریافت و مدیریت مستقیم اطلاعات از API و PostgreSQL · حداکثر ۱۰ سطح</p></div>
       <span className="tag">اتصال زنده پس از احراز هویت</span>
@@ -198,5 +234,28 @@ export default function AccountsWorkspace() {
       </tbody>
     </table></div>
     <p className="account-footnote">سطح والد باید دقیقاً یک درجه بالاتر باشد. حساب دارای فرزند یا گردش قابل حذف نیست. تمام عملیات تغییردهنده از کنترل دسترسی API عبور کرده و رویداد ممیزی ثبت می‌کنند. این صفحه در GitHub Pages به‌دلیل نداشتن backend قابل استفاده عملیاتی نیست؛ برای اتصال کامل از اجرای Docker سامانه استفاده می‌شود.</p>
-  </section>;
+  </section>
+    <section className="panel account-panel dimension-panel">
+      <div className="panel-head">
+        <div><h3>مدیریت تفصیلی شناور و ابعاد تحلیلی</h3><p>تعریف اشخاص، مراکز هزینه، پروژه‌ها و سایر ابعاد قابل استفاده در ثبت‌های حسابداری</p></div>
+        <span className="tag">متصل به PostgreSQL</span>
+      </div>
+      <form className="account-create-form" onSubmit={createDimension}>
+        <div className="account-form-grid">
+          <label>نوع بُعد<input required maxLength={40} value={dimensionDraft.type} onChange={e=>setDimensionDraft({...dimensionDraft,type:e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g,"")})} placeholder="CUSTOMER" dir="ltr" /></label>
+          <label>کد<input required maxLength={60} value={dimensionDraft.code} onChange={e=>setDimensionDraft({...dimensionDraft,code:e.target.value})} /></label>
+          <label>عنوان<input required maxLength={250} value={dimensionDraft.name} onChange={e=>setDimensionDraft({...dimensionDraft,name:e.target.value})} /></label>
+        </div>
+        <div className="account-form-actions"><button className="primary-button" disabled={!configured || saving}>ثبت بُعد تحلیلی</button></div>
+      </form>
+      <div className="table-wrap"><table>
+        <thead><tr><th>نوع بُعد</th><th>کد</th><th>عنوان</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+        <tbody>
+          {dimensions.map(d=><tr key={d.id}><td className="code">{d.type}</td><td className="code">{d.code}</td><td>{d.name}</td><td>{d.isActive?"فعال":"غیرفعال"}</td><td><button disabled={saving} onClick={()=>setDimensionActive(d)}>{d.isActive?"غیرفعال‌سازی":"فعال‌سازی"}</button></td></tr>)}
+          {!dimensions.length && <tr><td colSpan={5} className="empty-accounts">بُعد تحلیلی ثبت‌شده‌ای وجود ندارد یا هنوز اطلاعات دریافت نشده است.</td></tr>}
+        </tbody>
+      </table></div>
+      <p className="account-footnote">این بخش فهرست تفصیلی‌های شناور و ابعاد تحلیلی را مدیریت می‌کند. تفصیلی ثابتِ اختصاص‌یافته به هر حساب هنوز به مدل رابطه‌ای مستقل و قواعد انتخاب و اعتبارسنجی نیاز دارد؛ این دو مفهوم عمداً یکی نشده‌اند.</p>
+    </section>
+  </>;
 }
