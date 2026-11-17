@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 
 type Account = { id:string; code:string; name:string; detailMode:string; isPostable:boolean; isActive:boolean };
 type Dimension = { id:string; type:string; code:string; name:string; isActive:boolean };
@@ -77,7 +78,7 @@ export default function JournalWorkspace() {
     }
   }
   function updateLine(index:number,patch:Partial<Line>){setLines(old=>old.map((l,i)=>i===index?{...l,...patch}:l));}
-  async function createDraft(event:React.FormEvent){
+  async function createDraft(event:FormEvent){
     event.preventDefault();setBusy(true);setError("");setNotice("");
     try{
       if(!periodId.trim())throw new Error("شناسه دوره مالی الزامی است.");
