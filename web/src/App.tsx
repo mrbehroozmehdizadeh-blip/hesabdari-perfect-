@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import AccountsWorkspace from "./AccountsWorkspace";
+import JournalWorkspace from "./JournalWorkspace";
 
-type ModuleKey = "overview" | "accounts" | "treasury" | "inventory" | "production" | "reports" | "audit";
+type ModuleKey = "overview" | "accounts" | "journals" | "treasury" | "inventory" | "production" | "reports" | "audit";
 const modules: { key: ModuleKey; label: string; icon: string; status: string }[] = [
   { key: "overview", label: "نمای کلی", icon: "◫", status: "نمایش" },
-  { key: "accounts", label: "کدینگ حساب‌ها", icon: "▤", status: "نمونه نمایشی" },
+  { key: "accounts", label: "کدینگ حساب‌ها", icon: "▤", status: "متصل به API" },
+  { key: "journals", label: "ثبت اسناد حسابداری", icon: "▧", status: "متصل به API" },
   { key: "treasury", label: "خزانه و بانک", icon: "⇄", status: "در دست توسعه" },
   { key: "inventory", label: "انبار و کالا", icon: "▦", status: "در دست توسعه" },
   { key: "production", label: "تولید و بهای تمام‌شده", icon: "⚙", status: "در دست توسعه" },
@@ -62,6 +64,7 @@ export default function App() {
         <section className="panel lower-panel"><div className="panel-head"><div><h3>اصول طراحی هسته مالی</h3><p>قواعدی که در ساخت سامانه رعایت می‌شوند</p></div></div><div className="principles"><span>محاسبات دقیق Decimal</span><span>دفترکل قابل ممیزی</span><span>تفکیک شرکت‌ها و دسترسی‌ها</span><span>تأیید انسانی عملیات حساس</span></div></section>
       </>}
       {active === "accounts" && <AccountsWorkspace />}
+      {active === "journals" && <JournalWorkspace />}
       {active !== "overview" && active !== "accounts" && <section className="panel coming"><div className="coming-icon">{selected.icon}</div><h2>ماژول {selected.label}</h2><span className="tag">در دست توسعه</span><p>ساختار این بخش در نقشه راه سامانه قرار دارد. تا زمان تکمیل منطق کسب‌وکار، API، کنترل دسترسی و آزمون‌ها، عملیات واقعی در این قسمت فعال نیست.</p><button onClick={()=>setActive("overview")}>بازگشت به داشبورد</button></section>}
       <footer className="footer"><span>سامانه مالی و جامع هوشمند</span><span>{window.location.hostname.endsWith("github.io") ? "پیش‌نمایش ایستا · GitHub Pages" : "اجرای محلی Docker · کدینگ متصل به API"}</span></footer>
     </main>
