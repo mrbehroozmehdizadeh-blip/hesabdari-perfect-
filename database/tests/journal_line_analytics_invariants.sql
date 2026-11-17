@@ -58,6 +58,23 @@ BEGIN
     INSERT INTO journal_line_dimensions(tenant_id,company_id,journal_line_id,dimension_id)
     VALUES(v_tenant,v_company,v_float_line,v_dimension);
 
+    -- A draft must not advance if an assigned analytical master record was deactivated.
+    UPDATE fixed_account_details SET is_active=false
+     WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_fixed_detail;
+    UPDATE floating_dimensions SET is_active=false
+     WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_dimension;
+    BEGIN
+        UPDATE journal_entries SET entry_status='PENDING'
+         WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_journal;
+        RAISE EXCEPTION 'expected inactive analytics rejection';
+    EXCEPTION WHEN check_violation THEN
+        NULL;
+    END;
+    UPDATE fixed_account_details SET is_active=true
+     WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_fixed_detail;
+    UPDATE floating_dimensions SET is_active=true
+     WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_dimension;
+
     UPDATE journal_entries SET entry_status='PENDING'
      WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_journal;
 
