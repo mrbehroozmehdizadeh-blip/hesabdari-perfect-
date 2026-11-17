@@ -9,7 +9,7 @@ const blankLine = ():Line => ({accountId:"",debit:"",credit:"",description:"",fi
 const SCALE = 100000000n;
 const toUnits = (raw:string):bigint => {
   const value=raw.trim()||"0";
-  if(!/^\\d{1,20}(\\.\\d{1,8})?$/.test(value)) throw new Error("مبلغ باید عدد مثبت با حداکثر ۸ رقم اعشار باشد؛ جداکننده هزارگان وارد نکنید.");
+  if(!/^\d{1,20}(\.\d{1,8})?$/.test(value)) throw new Error("مبلغ باید عدد مثبت با حداکثر ۸ رقم اعشار باشد؛ جداکننده هزارگان وارد نکنید.");
   const [whole,fraction=""]=value.split(".");
   return BigInt(whole)*SCALE+BigInt((fraction+"00000000").slice(0,8));
 };
