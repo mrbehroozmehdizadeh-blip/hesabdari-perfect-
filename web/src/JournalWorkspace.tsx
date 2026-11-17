@@ -5,7 +5,24 @@ type Dimension = { id:string; type:string; code:string; name:string; isActive:bo
 type FixedDetail = { id:string; code:string; name:string; isActive:boolean };
 type Line = { accountId:string; debit:string; credit:string; description:string; fixedDetailId:string; dimensionIds:string[] };
 const blankLine = ():Line => ({accountId:"",debit:"",credit:"",description:"",fixedDetailId:"",dimensionIds:[]});
-const fmt = (v:number) => new Intl.NumberFormat("fa-IR",{maximumFractionDigits:2}).format(v);
+const SCALE = 100000000n;
+const toUnits = (raw:string):bigint => {
+  const value=raw.trim()||"0";
+  if(!/^\\d{1,20}(\\.\\d{1,8})?$/.test(value)) throw new Error("مبلغ باید عدد مثبت با حداکثر ۸ رقم اعشار باشد؛ جداکننده هزارگان وارد نکنید.");
+  const [whole,fraction=""]=value.split(".");
+  return BigInt(whole)*SCALE+BigInt((fraction+"00000000").slice(0,8));
+};
+const normalizeDecimal = (raw:string):string => {
+  const units=toUnits(raw);
+  const whole=units/SCALE;
+  const fraction=(units%SCALE).toString().padStart(8,"0").replace(/0+$/,"");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+};
+const fmt = (units:bigint) => {
+  const whole=new Intl.NumberFormat("fa-IR").format(units/SCALE);
+  const fraction=(units%SCALE).toString().padStart(8,"0").replace(/0+$/,"").replace(/[0-9]/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
+  return fraction ? `${whole}٫${fraction}` : whole;
+};
 
 export default function JournalWorkspace() {
   const [companyId,setCompanyId]=useState("");
@@ -25,9 +42,9 @@ export default function JournalWorkspace() {
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
   const configured=Boolean(companyId.trim()&&token.trim());
-  const totalDebit=useMemo(()=>lines.reduce((s,l)=>s+(Number(l.debit)||0),0),[lines]);
-  const totalCredit=useMemo(()=>lines.reduce((s,l)=>s+(Number(l.credit)||0),0),[lines]);
-  const balanced=totalDebit>0&&totalDebit===totalCredit;
+  const totalDebit=useMemo(()=>lines.reduce((s,l)=>{try{return s+toUnits(l.debit)}catch{return s;}},0n),[lines]);
+  const totalCredit=useMemo(()=>lines.reduce((s,l)=>{try{return s+toUnits(l.credit)}catch{return s;}},0n),[lines]);
+  const balanced=totalDebit>0n&&totalDebit===totalCredit;
   const request=async(path:string,init:RequestInit={})=>{
     const headers=new Headers(init.headers); headers.set("Accept","application/json");
     headers.set("Authorization",`Bearer ${token.trim()}`);
@@ -66,13 +83,14 @@ export default function JournalWorkspace() {
       if(!periodId.trim())throw new Error("شناسه دوره مالی الزامی است.");
       if(lines.some(l=>!l.accountId))throw new Error("برای تمام سطرها حساب انتخاب کنید.");
       if(!balanced)throw new Error("جمع بدهکار و بستانکار باید برابر و بزرگ‌تر از صفر باشد.");
-      const payload={
-        entryNumber,entryDate,fiscalPeriodId:periodId.trim(),currencyCode:currency.trim().toUpperCase(),
-        description,idempotencyKey:crypto.randomUUID(),
-        lines:lines.map(l=>({accountId:l.accountId,debitAmount:Number(l.debit)||0,creditAmount:Number(l.credit)||0,
-          description:l.description,fixedDetailId:l.fixedDetailId||null,dimensionIds:l.dimensionIds}))
-      };
-      const result=await request(`/api/companies/${encodeURIComponent(companyId.trim())}/journal-entries/`,{method:"POST",body:JSON.stringify(payload)});
+      const lineJson=lines.map(l=>{
+        const debit=normalizeDecimal(l.debit), credit=normalizeDecimal(l.credit);
+        if((toUnits(debit)>0n&&toUnits(credit)>0n)||(toUnits(debit)===0n&&toUnits(credit)===0n))
+          throw new Error("هر سطر باید فقط یک مبلغ بدهکار یا بستانکار مثبت داشته باشد.");
+        return `{"accountId":${JSON.stringify(l.accountId)},"debitAmount":${debit},"creditAmount":${credit},"description":${JSON.stringify(l.description)},"fixedDetailId":${JSON.stringify(l.fixedDetailId||null)},"dimensionIds":${JSON.stringify(l.dimensionIds)}}`;
+      }).join(",");
+      const payload=JSON.stringify({entryNumber,entryDate,fiscalPeriodId:periodId.trim(),currencyCode:currency.trim().toUpperCase(),description,idempotencyKey:crypto.randomUUID(),lines:[]}).replace('"lines":[]',`"lines":[${lineJson}]`);
+      const result=await request(`/api/companies/${encodeURIComponent(companyId.trim())}/journal-entries/`,{method:"POST",body:payload});
       setJournalId(result.id);setStatus(result.status);setNotice(`پیش‌نویس سند ${result.entryNumber??entryNumber} در پایگاه داده ایجاد شد.`);
     }catch(e){setError(e instanceof Error?e.message:"ثبت پیش‌نویس ناموفق بود.");}
     finally{setBusy(false);}
@@ -109,8 +127,8 @@ export default function JournalWorkspace() {
         const account=accounts.find(a=>a.id===line.accountId);
         return <tr key={index}>
           <td><select value={line.accountId} onChange={e=>chooseAccount(index,e.target.value)} disabled={!accounts.length}><option value="">انتخاب حساب...</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></td>
-          <td><input className="journal-number" inputMode="decimal" value={line.debit} onChange={e=>updateLine(index,{debit:e.target.value,credit:e.target.value?"0":line.credit})} placeholder="۰"/></td>
-          <td><input className="journal-number" inputMode="decimal" value={line.credit} onChange={e=>updateLine(index,{credit:e.target.value,debit:e.target.value?"0":line.debit})} placeholder="۰"/></td>
+          <td><input className="journal-number" inputMode="decimal" value={line.debit} maxLength={29} onChange={e=>updateLine(index,{debit:e.target.value,credit:e.target.value?"0":line.credit})} placeholder="۰"/></td>
+          <td><input className="journal-number" inputMode="decimal" value={line.credit} maxLength={29} onChange={e=>updateLine(index,{credit:e.target.value,debit:e.target.value?"0":line.debit})} placeholder="۰"/></td>
           <td>{account?.detailMode==="FIXED"?<select value={line.fixedDetailId} onChange={e=>updateLine(index,{fixedDetailId:e.target.value})}><option value="">انتخاب تفصیلی...</option>{(fixedOptions[account.id]??[]).map(d=><option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}</select>:account?.detailMode==="FLOATING"?<select multiple value={line.dimensionIds} onChange={e=>updateLine(index,{dimensionIds:Array.from(e.target.selectedOptions).map(o=>o.value)})}>{dimensions.map(d=><option key={d.id} value={d.id}>{d.type} · {d.code} · {d.name}</option>)}</select>:<span className="account-footnote">بدون تفصیلی</span>}</td>
           <td><input value={line.description} maxLength={500} onChange={e=>updateLine(index,{description:e.target.value})}/></td>
           <td><button type="button" className="secondary-button" disabled={lines.length<=2} onClick={()=>setLines(old=>old.filter((_,i)=>i!==index))}>حذف</button></td>
