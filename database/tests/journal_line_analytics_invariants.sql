@@ -46,7 +46,7 @@ BEGIN
       (v_float_line,v_tenant,v_company,v_journal,2,v_float_account,0,100);
 
     BEGIN
-        UPDATE journal_entries SET entry_status='PENDING'
+        UPDATE journal_entries SET entry_status='PENDING', submitted_by=v_actor, submitted_at=now()
          WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_journal;
         RAISE EXCEPTION 'expected missing analytics rejection';
     EXCEPTION WHEN check_violation THEN
@@ -64,7 +64,7 @@ BEGIN
     UPDATE floating_dimensions SET is_active=false
      WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_dimension;
     BEGIN
-        UPDATE journal_entries SET entry_status='PENDING'
+        UPDATE journal_entries SET entry_status='PENDING', submitted_by=v_actor, submitted_at=now()
          WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_journal;
         RAISE EXCEPTION 'expected inactive analytics rejection';
     EXCEPTION WHEN check_violation THEN
@@ -75,7 +75,7 @@ BEGIN
     UPDATE floating_dimensions SET is_active=true
      WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_dimension;
 
-    UPDATE journal_entries SET entry_status='PENDING'
+    UPDATE journal_entries SET entry_status='PENDING', submitted_by=v_actor, submitted_at=now()
      WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_journal;
 
     BEGIN
