@@ -128,8 +128,9 @@ public static class JournalEndpoints
         }
 
         var accountIds = lines.Select(x => x.AccountId).Distinct().ToArray();
+        var accountModes = new Dictionary<Guid, string>();
         await using (var accounts = new NpgsqlCommand("""
-            SELECT count(*)
+            SELECT id, detail_mode
               FROM accounts
              WHERE tenant_id=@tenant AND company_id=@company
                AND id = ANY(@ids) AND is_active=true AND is_postable=true
@@ -138,9 +139,31 @@ public static class JournalEndpoints
             accounts.Parameters.AddWithValue("tenant", tenant);
             accounts.Parameters.AddWithValue("company", companyId);
             accounts.Parameters.AddWithValue("ids", accountIds);
-            var validCount = Convert.ToInt64(await accounts.ExecuteScalarAsync(ct));
-            if (validCount != accountIds.Length)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["lines"] = ["تمام حساب‌های انتخاب‌شده باید در همین شرکت فعال و قابل ثبت باشند."] });
+            await using var reader = await accounts.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+                accountModes[reader.GetGuid(0)] = reader.GetString(1);
+        }
+        if (accountModes.Count != accountIds.Length)
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["lines"] = ["تمام حساب‌های انتخاب‌شده باید در همین شرکت فعال و قابل ثبت باشند."] });
+
+        foreach (var line in lines)
+        {
+            var dimensionIds = line.DimensionIds ?? [];
+            if (dimensionIds.Any(id => id == Guid.Empty) || dimensionIds.Distinct().Count() != dimensionIds.Count)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["lines"] = ["شناسه‌های ابعاد تحلیلی نباید خالی یا تکراری باشند."] });
+
+            var mode = accountModes[line.AccountId];
+            var validAnalytics = mode switch
+            {
+                "FIXED" => line.FixedDetailId is Guid fixedId && fixedId != Guid.Empty && dimensionIds.Count == 0,
+                "FLOATING" => line.FixedDetailId is null && dimensionIds.Count > 0,
+                "NONE" => line.FixedDetailId is null && dimensionIds.Count == 0,
+                _ => false
+            };
+            if (!validAnalytics)
+                return Results.ValidationProblem(new Dictionary<string, string[]> {
+                    ["lines"] = [$"اطلاعات تفصیلی سطر با نوع تفصیلی حساب {mode} سازگار نیست."]
+                });
         }
 
         // A repeated key with identical content returns the original draft.
