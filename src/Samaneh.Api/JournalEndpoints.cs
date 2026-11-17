@@ -11,6 +11,7 @@ public static class JournalEndpoints
         var group = app.MapGroup("/api/companies/{companyId:guid}/journal-entries")
             .RequireAuthorization();
 
+        group.MapGet("/", List);
         group.MapPost("/", CreateDraft);
         group.MapPost("/{journalId:guid}/submit", SubmitForApproval);
         group.MapPost("/{journalId:guid}/approve", Approve);
@@ -796,6 +797,74 @@ public static class JournalEndpoints
         await WriteAudit(c, tx, tenant, companyId, actor, journalId, "JOURNAL_POSTED_TO_GENERAL_LEDGER", ct);
         await tx.CommitAsync(ct);
         return Results.Ok(new { id = journalId, status = "POSTED", ledgerLines = lineCount, debitTotal = debit, creditTotal = credit, currency });
+    }
+
+    private static async Task<IResult> List(
+        Guid companyId, string? status, int? take, ClaimsPrincipal user,
+        NpgsqlDataSource? ds, CancellationToken ct)
+    {
+        if (!TryIdentity(user, out var tenant, out var actor) || ds is null)
+            return Results.Unauthorized();
+
+        var normalizedStatus = string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToUpperInvariant();
+        if (normalizedStatus is not null &&
+            !new[] { "DRAFT", "PENDING", "APPROVED", "POSTED", "REJECTED", "REVERSED" }.Contains(normalizedStatus))
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["status"] = ["وضعیت سند معتبر نیست."]
+            });
+
+        var pageSize = Math.Clamp(take ?? 50, 1, 100);
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await SetTenant(c, tx, tenant, ct);
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "JOURNALS_READ", ct))
+            return Results.Forbid();
+
+        await using var cmd = new NpgsqlCommand("""
+            SELECT j.id, j.entry_number, j.entry_date, j.currency_code, j.entry_status,
+                   j.description, j.fiscal_period_id, p.period_code,
+                   COALESCE(SUM(l.debit_amount), 0)::numeric(28,8),
+                   COALESCE(SUM(l.credit_amount), 0)::numeric(28,8),
+                   j.created_at
+              FROM journal_entries j
+              JOIN fiscal_periods p
+                ON p.tenant_id=j.tenant_id AND p.company_id=j.company_id AND p.id=j.fiscal_period_id
+              LEFT JOIN journal_lines l
+                ON l.tenant_id=j.tenant_id AND l.company_id=j.company_id AND l.journal_entry_id=j.id
+             WHERE j.tenant_id=@tenant AND j.company_id=@company
+               AND (@status IS NULL OR j.entry_status=@status)
+             GROUP BY j.id, p.period_code
+             ORDER BY j.entry_date DESC, j.created_at DESC, j.entry_number DESC
+             LIMIT @take
+            """, c, tx);
+        cmd.Parameters.AddWithValue("tenant", tenant);
+        cmd.Parameters.AddWithValue("company", companyId);
+        cmd.Parameters.AddWithValue("status", (object?)normalizedStatus ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("take", pageSize);
+
+        var rows = new List<object>();
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                rows.Add(new {
+                    id = reader.GetGuid(0),
+                    entryNumber = reader.GetString(1),
+                    entryDate = reader.GetFieldValue<DateOnly>(2),
+                    currency = reader.GetString(3),
+                    status = reader.GetString(4),
+                    description = reader.GetString(5),
+                    fiscalPeriodId = reader.GetGuid(6),
+                    periodCode = reader.GetString(7),
+                    debitTotal = reader.GetDecimal(8),
+                    creditTotal = reader.GetDecimal(9),
+                    createdAt = reader.GetFieldValue<DateTimeOffset>(10)
+                });
+            }
+        }
+        await tx.CommitAsync(ct);
+        return Results.Ok(rows);
     }
 
     private static async Task<IResult> GetById(
