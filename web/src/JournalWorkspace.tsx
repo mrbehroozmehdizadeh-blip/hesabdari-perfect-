@@ -4,6 +4,8 @@ import type { FormEvent } from "react";
 type Account = { id:string; code:string; name:string; detailMode:string; isPostable:boolean; isActive:boolean };
 type Dimension = { id:string; type:string; code:string; name:string; isActive:boolean };
 type FixedDetail = { id:string; code:string; name:string; isActive:boolean };
+type FiscalPeriod = { id:string; code:string; startsOn:string; endsOn:string; status:string };
+type JournalSummary = { id:string; entryNumber:string; entryDate:string; currency:string; status:string; description:string; fiscalPeriodId:string; periodCode:string; debitTotal:number|string; creditTotal:number|string };
 type Line = { accountId:string; debit:string; credit:string; description:string; fixedDetailId:string; dimensionIds:string[] };
 const blankLine = ():Line => ({accountId:"",debit:"",credit:"",description:"",fixedDetailId:"",dimensionIds:[]});
 const SCALE = 100000000n;
@@ -29,6 +31,9 @@ export default function JournalWorkspace() {
   const [companyId,setCompanyId]=useState("");
   const [token,setToken]=useState("");
   const [periodId,setPeriodId]=useState("");
+  const [periods,setPeriods]=useState<FiscalPeriod[]>([]);
+  const [journalRows,setJournalRows]=useState<JournalSummary[]>([]);
+  const [journalFilter,setJournalFilter]=useState("");
   const [entryDate,setEntryDate]=useState(new Date().toISOString().slice(0,10));
   const [entryNumber,setEntryNumber]=useState("");
   const [currency,setCurrency]=useState("IRR");
@@ -58,17 +63,29 @@ export default function JournalWorkspace() {
     if(!configured)return;
     setBusy(true);setError("");setNotice("");
     try{
-      const [a,d]=await Promise.all([
-        request(`/api/companies/${encodeURIComponent(companyId.trim())}/accounts/`),
-        request(`/api/companies/${encodeURIComponent(companyId.trim())}/dimensions/`)
+      const [a,d,p,j]=await Promise.all([
+        request("/api/companies/"+encodeURIComponent(companyId.trim())+"/accounts/"),
+        request("/api/companies/"+encodeURIComponent(companyId.trim())+"/dimensions/"),
+        request("/api/companies/"+encodeURIComponent(companyId.trim())+"/fiscal-periods/"),
+        request("/api/companies/"+encodeURIComponent(companyId.trim())+"/journal-entries/?take=50")
       ]);
       setAccounts((Array.isArray(a)?a:[]).filter((x:Account)=>x.isActive&&x.isPostable));
       setDimensions((Array.isArray(d)?d:[]).filter((x:Dimension)=>x.isActive));
-      setNotice("حساب‌های قابل ثبت و ابعاد تحلیلی از API دریافت شدند.");
-    }catch(e){setError(e instanceof Error?e.message:"دریافت اطلاعات پایه ناموفق بود.");setAccounts([]);setDimensions([]);}
+      const loadedPeriods: FiscalPeriod[]=Array.isArray(p)?p:[];
+      setPeriods(loadedPeriods);
+      setJournalRows(Array.isArray(j)?j:[]);
+      if(!periodId.trim()){const openPeriod=loadedPeriods.find(x=>x.status==="OPEN");if(openPeriod)setPeriodId(openPeriod.id);}
+      setNotice("حساب‌ها، ابعاد تحلیلی، دوره‌های مالی و فهرست اسناد از API دریافت شدند.");
+    }catch(e){setError(e instanceof Error?e.message:"دریافت اطلاعات پایه ناموفق بود.");setAccounts([]);setDimensions([]);setPeriods([]);setJournalRows([]);}
     finally{setBusy(false);}
   }
-  useEffect(()=>{setAccounts([]);setDimensions([]);setFixedOptions({});setJournalId("");setStatus("");},[companyId,token]);
+  async function refreshJournalList(){
+    if(!configured)return;
+    const suffix=journalFilter?"&status="+encodeURIComponent(journalFilter):"";
+    const rows=await request("/api/companies/"+encodeURIComponent(companyId.trim())+"/journal-entries/?take=50"+suffix);
+    setJournalRows(Array.isArray(rows)?rows:[]);
+  }
+  useEffect(()=>{setAccounts([]);setDimensions([]);setFixedOptions({});setPeriods([]);setJournalRows([]);setJournalId("");setStatus("");setPeriodId("");},[companyId,token]);
   async function chooseAccount(index:number,accountId:string){
     const next=[...lines];next[index]={...next[index],accountId,fixedDetailId:"",dimensionIds:[]};setLines(next);
     const account=accounts.find(a=>a.id===accountId);
@@ -92,14 +109,16 @@ export default function JournalWorkspace() {
       }).join(",");
       const payload=JSON.stringify({entryNumber,entryDate,fiscalPeriodId:periodId.trim(),currencyCode:currency.trim().toUpperCase(),description,idempotencyKey:crypto.randomUUID(),lines:[]}).replace('"lines":[]',`"lines":[${lineJson}]`);
       const result=await request(`/api/companies/${encodeURIComponent(companyId.trim())}/journal-entries/`,{method:"POST",body:payload});
-      setJournalId(result.id);setStatus(result.status);setNotice(`پیش‌نویس سند ${result.entryNumber??entryNumber} در پایگاه داده ایجاد شد.`);
+      setJournalId(result.id);setStatus(result.status);setNotice("پیش‌نویس سند "+(result.entryNumber??entryNumber)+" در پایگاه داده ایجاد شد.");
+      await refreshJournalList();
     }catch(e){setError(e instanceof Error?e.message:"ثبت پیش‌نویس ناموفق بود.");}
     finally{setBusy(false);}
   }
   async function transition(action:"submit"|"approve"|"post"){
     if(!journalId)return;setBusy(true);setError("");setNotice("");
     try{const result=await request(`/api/companies/${encodeURIComponent(companyId.trim())}/journal-entries/${journalId}/${action}`,{method:"POST"});
-      setStatus(result.status);setNotice(`وضعیت سند به ${result.status} تغییر کرد.`);
+      setStatus(result.status);setNotice("وضعیت سند به "+result.status+" تغییر کرد.");
+      await refreshJournalList();
     }catch(e){setError(e instanceof Error?e.message:"تغییر وضعیت سند ناموفق بود.");}
     finally{setBusy(false);}
   }
@@ -113,12 +132,26 @@ export default function JournalWorkspace() {
     <div className="account-security-note">توکن فقط در حافظه صفحه نگهداری می‌شود. ثبت سند به شناسه دوره مالی باز و مجوزهای معتبر نیاز دارد. تأیید و ثبت دفترکل طبق کنترل‌های تفکیک وظایف API انجام می‌شود.</div>
     {error&&<div className="account-alert error" role="alert">{error}</div>}
     {notice&&<div className="account-alert success" role="status">{notice}</div>}
+    <section className="journal-list-section">
+      <div className="journal-list-heading"><h4>فهرست اسناد ثبت‌شده</h4>
+        <div className="journal-list-controls">
+          <select value={journalFilter} onChange={async e=>{const value=e.target.value;setJournalFilter(value);try{const suffix=value?"&status="+encodeURIComponent(value):"";const rows=await request("/api/companies/"+encodeURIComponent(companyId.trim())+"/journal-entries/?take=50"+suffix);setJournalRows(Array.isArray(rows)?rows:[]);}catch(err){setError(err instanceof Error?err.message:"بارگذاری فهرست اسناد ناموفق بود.");}}} disabled={!configured}>
+            <option value="">همه وضعیت‌ها</option><option value="DRAFT">پیش‌نویس</option><option value="PENDING">در انتظار تأیید</option><option value="APPROVED">تأییدشده</option><option value="POSTED">ثبت‌شده در دفتر کل</option><option value="REVERSED">معکوس‌شده</option>
+          </select>
+          <button type="button" className="secondary-button" disabled={!configured||busy} onClick={refreshJournalList}>به‌روزرسانی</button>
+        </div>
+      </div>
+      {journalRows.length===0?<p className="account-footnote">سندی برای نمایش وجود ندارد یا هنوز اطلاعات از API دریافت نشده است.</p>:
+        <div className="table-wrap"><table><thead><tr><th>شماره</th><th>تاریخ</th><th>دوره مالی</th><th>وضعیت</th><th>بدهکار</th><th>بستانکار</th><th>عملیات</th></tr></thead>
+          <tbody>{journalRows.map(j=><tr key={j.id}><td>{j.entryNumber}</td><td>{j.entryDate}</td><td>{j.periodCode}</td><td>{j.status}</td><td>{fmt(toUnits(String(j.debitTotal)))}</td><td>{fmt(toUnits(String(j.creditTotal)))}</td><td><button type="button" className="secondary-button" onClick={async()=>{try{const detail=await request("/api/companies/"+encodeURIComponent(companyId.trim())+"/journal-entries/"+j.id);setJournalId(detail.journal.id);setStatus(detail.journal.status);setNotice("سند "+detail.journal.entryNumber+" برای پیگیری انتخاب شد.");}catch(err){setError(err instanceof Error?err.message:"دریافت سند ناموفق بود.");}}}>پیگیری</button></td></tr>)}</tbody>
+        </table></div>}
+    </section>
     <form className="account-create-form" onSubmit={createDraft}>
       <h4>اطلاعات سربرگ سند</h4>
       <div className="account-form-grid">
         <label>شماره سند<input required maxLength={50} value={entryNumber} onChange={e=>setEntryNumber(e.target.value)}/></label>
         <label>تاریخ سند<input required type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)}/></label>
-        <label>شناسه دوره مالی<input required value={periodId} onChange={e=>setPeriodId(e.target.value)} placeholder="UUID دوره" dir="ltr"/></label>
+        <label>دوره مالی<select required value={periodId} onChange={e=>setPeriodId(e.target.value)}><option value="">انتخاب دوره مالی...</option>{periods.map(p=><option key={p.id} value={p.id}>{p.code} · {p.startsOn} تا {p.endsOn} · {p.status==="OPEN"?"باز":p.status==="CLOSED"?"بسته":"قفل‌شده"}</option>)}</select></label>
         <label>کد ارز<input required maxLength={3} value={currency} onChange={e=>setCurrency(e.target.value.toUpperCase())} dir="ltr"/></label>
         <label>شرح سند<input maxLength={1000} value={description} onChange={e=>setDescription(e.target.value)}/></label>
       </div>
