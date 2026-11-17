@@ -7,14 +7,17 @@ LANGUAGE plpgsql
 AS $function$
 DECLARE
     v_detail_mode varchar(10);
+    v_dimension_active boolean;
 BEGIN
-    SELECT detail_mode INTO v_detail_mode
-      FROM accounts
-     WHERE tenant_id=NEW.tenant_id AND company_id=NEW.company_id
-       AND id=(SELECT account_id FROM journal_lines
-                WHERE tenant_id=NEW.tenant_id AND company_id=NEW.company_id AND id=NEW.journal_line_id);
-    IF v_detail_mode IS DISTINCT FROM 'FLOATING' THEN
-        RAISE EXCEPTION 'Floating dimensions can only be assigned to FLOATING-mode posting accounts';
+    SELECT a.detail_mode, d.is_active
+      INTO v_detail_mode, v_dimension_active
+      FROM journal_lines l
+      JOIN accounts a ON a.tenant_id=l.tenant_id AND a.company_id=l.company_id AND a.id=l.account_id
+      JOIN floating_dimensions d ON d.tenant_id=l.tenant_id AND d.company_id=l.company_id
+                                AND d.id=NEW.dimension_id
+     WHERE l.tenant_id=NEW.tenant_id AND l.company_id=NEW.company_id AND l.id=NEW.journal_line_id;
+    IF NOT FOUND OR v_detail_mode IS DISTINCT FROM 'FLOATING' OR NOT v_dimension_active THEN
+        RAISE EXCEPTION 'Floating dimensions must be active and assigned to FLOATING-mode posting accounts';
     END IF;
     RETURN NEW;
 END;
