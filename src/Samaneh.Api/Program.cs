@@ -413,6 +413,48 @@ if (authenticationConfigured)
         return Results.Ok(new { id = detailId, code, isActive = input.IsActive });
     });
 
+    fixedDetails.MapDelete("/{detailId:guid}", async Task<IResult> (Guid companyId, Guid accountId, Guid detailId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
+    {
+        if (!Identity(user, out var tenant, out var actor) || ds is null) return Results.Unauthorized();
+        await using var c = await ds.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        await Tenant(c, tx, tenant, ct);
+        if (!await AuthorizationQueries.HasPermission(c, tx, tenant, companyId, actor, "ACCOUNTS_MANAGE", ct)) return Results.Forbid();
+
+        await using var delete = new NpgsqlCommand("""
+            DELETE FROM fixed_account_details d
+             WHERE d.tenant_id=@tenant AND d.company_id=@company AND d.account_id=@account
+               AND d.id=@id AND d.is_active=false
+               AND NOT EXISTS (
+                   SELECT 1 FROM journal_line_fixed_details x
+                    WHERE x.tenant_id=d.tenant_id AND x.company_id=d.company_id
+                      AND x.fixed_detail_id=d.id)
+            RETURNING d.detail_code
+            """, c, tx);
+        delete.Parameters.AddWithValue("tenant", tenant);
+        delete.Parameters.AddWithValue("company", companyId);
+        delete.Parameters.AddWithValue("account", accountId);
+        delete.Parameters.AddWithValue("id", detailId);
+        var code = await delete.ExecuteScalarAsync(ct) as string;
+        if (code is null)
+            return Results.Conflict(new { error = "فقط تفصیلی غیرفعالِ بدون سابقه سند قابل حذف است؛ در غیر این صورت آن را غیرفعال نگه دارید." });
+
+        await using var audit = new NpgsqlCommand("""
+            INSERT INTO audit_events(tenant_id,company_id,actor_id,event_type,entity_type,entity_id,payload)
+            VALUES(@tenant,@company,@actor,'FIXED_DETAIL_DELETED','FIXED_ACCOUNT_DETAIL',@id,
+                   jsonb_build_object('accountId',@account,'code',@code))
+            """, c, tx);
+        audit.Parameters.AddWithValue("tenant", tenant);
+        audit.Parameters.AddWithValue("company", companyId);
+        audit.Parameters.AddWithValue("actor", actor);
+        audit.Parameters.AddWithValue("id", detailId);
+        audit.Parameters.AddWithValue("account", accountId);
+        audit.Parameters.AddWithValue("code", code);
+        await audit.ExecuteNonQueryAsync(ct);
+        await tx.CommitAsync(ct);
+        return Results.NoContent();
+    });
+
     var dimensions = app.MapGroup("/api/companies/{companyId:guid}/dimensions").RequireAuthorization();
     dimensions.MapGet("/", async Task<IResult> (Guid companyId, ClaimsPrincipal user, NpgsqlDataSource? ds, CancellationToken ct) =>
     {
