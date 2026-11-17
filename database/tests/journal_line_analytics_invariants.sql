@@ -75,9 +75,7 @@ BEGIN
     UPDATE floating_dimensions SET is_active=true
      WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_dimension;
 
-    UPDATE journal_entries SET entry_status='PENDING', submitted_by=v_actor, submitted_at=now()
-     WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_journal;
-
+    -- Mixed analytics must be rejected while the journal is still editable.
     BEGIN
         INSERT INTO journal_line_dimensions(tenant_id,company_id,journal_line_id,dimension_id)
         VALUES(v_tenant,v_company,v_fixed_line,v_dimension);
@@ -85,6 +83,9 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         IF SQLERRM='expected floating dimension mode rejection' THEN RAISE; END IF;
     END;
+
+    UPDATE journal_entries SET entry_status='PENDING', submitted_by=v_actor, submitted_at=now()
+     WHERE tenant_id=v_tenant AND company_id=v_company AND id=v_journal;
 END $$;
 
 ROLLBACK;
