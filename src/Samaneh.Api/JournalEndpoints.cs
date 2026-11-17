@@ -166,6 +166,43 @@ public static class JournalEndpoints
                 });
         }
 
+        foreach (var line in lines)
+        {
+            if (line.FixedDetailId is Guid fixedDetailId)
+            {
+                await using var fixedCheck = new NpgsqlCommand("""
+                    SELECT 1 FROM fixed_account_details
+                     WHERE tenant_id=@tenant AND company_id=@company AND account_id=@account
+                       AND id=@detail AND is_active=true
+                    """, c, tx);
+                fixedCheck.Parameters.AddWithValue("tenant", tenant);
+                fixedCheck.Parameters.AddWithValue("company", companyId);
+                fixedCheck.Parameters.AddWithValue("account", line.AccountId);
+                fixedCheck.Parameters.AddWithValue("detail", fixedDetailId);
+                if (await fixedCheck.ExecuteScalarAsync(ct) is null)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> {
+                        ["lines"] = ["تفصیلی ثابت باید فعال و متعلق به همان حساب باشد."]
+                    });
+            }
+
+            var dimensionIds = line.DimensionIds ?? [];
+            if (dimensionIds.Count > 0)
+            {
+                await using var dimensionCheck = new NpgsqlCommand("""
+                    SELECT count(*) FROM floating_dimensions
+                     WHERE tenant_id=@tenant AND company_id=@company
+                       AND id=ANY(@ids) AND is_active=true
+                    """, c, tx);
+                dimensionCheck.Parameters.AddWithValue("tenant", tenant);
+                dimensionCheck.Parameters.AddWithValue("company", companyId);
+                dimensionCheck.Parameters.AddWithValue("ids", dimensionIds.Distinct().ToArray());
+                if (Convert.ToInt64(await dimensionCheck.ExecuteScalarAsync(ct)) != dimensionIds.Count)
+                    return Results.ValidationProblem(new Dictionary<string, string[]> {
+                        ["lines"] = ["تمام ابعاد شناور باید فعال و متعلق به همین شرکت باشند."]
+                    });
+            }
+        }
+
         // A repeated key with identical content returns the original draft.
         // Reusing the same key for different content is rejected.
         await using (var existing = new NpgsqlCommand("""
