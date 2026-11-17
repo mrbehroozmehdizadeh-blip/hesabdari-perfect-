@@ -798,9 +798,23 @@ public static class JournalEndpoints
         var lines = new List<object>();
         await using (var cmd = new NpgsqlCommand("""
             SELECT l.line_number, l.account_id, a.account_code, a.account_name,
-                   l.debit_amount, l.credit_amount, l.description
+                   l.debit_amount, l.credit_amount, l.description, a.detail_mode,
+                   f.id, f.detail_code, f.detail_name,
+                   COALESCE((
+                       SELECT jsonb_agg(jsonb_build_object('id',d.id,'type',d.dimension_type,
+                                                          'code',d.dimension_code,'name',d.dimension_name)
+                                        ORDER BY d.dimension_type,d.dimension_code)
+                         FROM journal_line_dimensions x
+                         JOIN floating_dimensions d
+                           ON d.tenant_id=x.tenant_id AND d.company_id=x.company_id AND d.id=x.dimension_id
+                        WHERE x.tenant_id=l.tenant_id AND x.company_id=l.company_id AND x.journal_line_id=l.id
+                   ), '[]'::jsonb)::text
               FROM journal_lines l
               JOIN accounts a ON a.tenant_id=l.tenant_id AND a.company_id=l.company_id AND a.id=l.account_id
+              LEFT JOIN journal_line_fixed_details lf
+                ON lf.tenant_id=l.tenant_id AND lf.company_id=l.company_id AND lf.journal_line_id=l.id
+              LEFT JOIN fixed_account_details f
+                ON f.tenant_id=lf.tenant_id AND f.company_id=lf.company_id AND f.id=lf.fixed_detail_id
              WHERE l.tenant_id=@tenant AND l.company_id=@company AND l.journal_entry_id=@id
              ORDER BY l.line_number
             """, c, tx))
@@ -810,9 +824,17 @@ public static class JournalEndpoints
             cmd.Parameters.AddWithValue("id", journalId);
             await using var reader = await cmd.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
-                lines.Add(new { lineNumber=reader.GetInt32(0), accountId=reader.GetGuid(1),
+            {
+                var floating = JsonDocument.Parse(reader.GetString(11)).RootElement.Clone();
+                lines.Add(new {
+                    lineNumber=reader.GetInt32(0), accountId=reader.GetGuid(1),
                     accountCode=reader.GetString(2), accountName=reader.GetString(3),
-                    debit=reader.GetDecimal(4), credit=reader.GetDecimal(5), description=reader.GetString(6) });
+                    debit=reader.GetDecimal(4), credit=reader.GetDecimal(5), description=reader.GetString(6),
+                    detailMode=reader.GetString(7),
+                    fixedDetail=reader.IsDBNull(8) ? null : new { id=reader.GetGuid(8), code=reader.GetString(9), name=reader.GetString(10) },
+                    floatingDimensions=floating
+                });
+            }
         }
         await tx.CommitAsync(ct);
         return Results.Ok(new { journal = header, lines });
