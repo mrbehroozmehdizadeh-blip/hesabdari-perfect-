@@ -85,7 +85,9 @@ public static class JournalEndpoints
                 x.AccountId,
                 x.DebitAmount,
                 x.CreditAmount,
-                Description = x.Description?.Trim() ?? string.Empty
+                Description = x.Description?.Trim() ?? string.Empty,
+                x.FixedDetailId,
+                DimensionIds = (x.DimensionIds ?? []).Distinct().OrderBy(id => id).ToArray()
             }).ToArray()
         };
         var fingerprint = Convert.ToHexString(SHA256.HashData(
@@ -214,21 +216,52 @@ public static class JournalEndpoints
             for (var i = 0; i < lines.Count; i++)
             {
                 var line = lines[i];
-                await using var insertLine = new NpgsqlCommand("""
+                Guid lineId;
+                await using (var insertLine = new NpgsqlCommand("""
                     INSERT INTO journal_lines
                         (tenant_id,company_id,journal_entry_id,line_number,account_id,
                          debit_amount,credit_amount,description)
                     VALUES (@tenant,@company,@journal,@number,@account,@debit,@credit,@description)
-                    """, c, tx);
-                insertLine.Parameters.AddWithValue("tenant", tenant);
-                insertLine.Parameters.AddWithValue("company", companyId);
-                insertLine.Parameters.AddWithValue("journal", journalId);
-                insertLine.Parameters.AddWithValue("number", i + 1);
-                insertLine.Parameters.AddWithValue("account", line.AccountId);
-                insertLine.Parameters.AddWithValue("debit", line.DebitAmount);
-                insertLine.Parameters.AddWithValue("credit", line.CreditAmount);
-                insertLine.Parameters.AddWithValue("description", line.Description?.Trim() ?? string.Empty);
-                await insertLine.ExecuteNonQueryAsync(ct);
+                    RETURNING id
+                    """, c, tx))
+                {
+                    insertLine.Parameters.AddWithValue("tenant", tenant);
+                    insertLine.Parameters.AddWithValue("company", companyId);
+                    insertLine.Parameters.AddWithValue("journal", journalId);
+                    insertLine.Parameters.AddWithValue("number", i + 1);
+                    insertLine.Parameters.AddWithValue("account", line.AccountId);
+                    insertLine.Parameters.AddWithValue("debit", line.DebitAmount);
+                    insertLine.Parameters.AddWithValue("credit", line.CreditAmount);
+                    insertLine.Parameters.AddWithValue("description", line.Description?.Trim() ?? string.Empty);
+                    lineId = (Guid)(await insertLine.ExecuteScalarAsync(ct)
+                        ?? throw new InvalidOperationException("Journal line insert returned no identifier."));
+                }
+
+                if (line.FixedDetailId is Guid fixedDetailId)
+                {
+                    await using var fixedInsert = new NpgsqlCommand("""
+                        INSERT INTO journal_line_fixed_details(tenant_id,company_id,journal_line_id,fixed_detail_id)
+                        VALUES(@tenant,@company,@line,@detail)
+                        """, c, tx);
+                    fixedInsert.Parameters.AddWithValue("tenant", tenant);
+                    fixedInsert.Parameters.AddWithValue("company", companyId);
+                    fixedInsert.Parameters.AddWithValue("line", lineId);
+                    fixedInsert.Parameters.AddWithValue("detail", fixedDetailId);
+                    await fixedInsert.ExecuteNonQueryAsync(ct);
+                }
+
+                foreach (var dimensionId in (line.DimensionIds ?? []).Distinct())
+                {
+                    await using var dimensionInsert = new NpgsqlCommand("""
+                        INSERT INTO journal_line_dimensions(tenant_id,company_id,journal_line_id,dimension_id)
+                        VALUES(@tenant,@company,@line,@dimension)
+                        """, c, tx);
+                    dimensionInsert.Parameters.AddWithValue("tenant", tenant);
+                    dimensionInsert.Parameters.AddWithValue("company", companyId);
+                    dimensionInsert.Parameters.AddWithValue("line", lineId);
+                    dimensionInsert.Parameters.AddWithValue("dimension", dimensionId);
+                    await dimensionInsert.ExecuteNonQueryAsync(ct);
+                }
             }
 
             await using (var audit = new NpgsqlCommand("""
@@ -544,6 +577,44 @@ public static class JournalEndpoints
             if(await copy.ExecuteNonQueryAsync(ct)!=sourceLines) return Results.Conflict();
         }
 
+        await using (var copyFixed = new NpgsqlCommand("""
+            INSERT INTO journal_line_fixed_details(tenant_id,company_id,journal_line_id,fixed_detail_id)
+            SELECT n.tenant_id,n.company_id,n.id,f.fixed_detail_id
+              FROM journal_lines old
+              JOIN journal_line_fixed_details f
+                ON f.tenant_id=old.tenant_id AND f.company_id=old.company_id AND f.journal_line_id=old.id
+              JOIN journal_lines n
+                ON n.tenant_id=old.tenant_id AND n.company_id=old.company_id
+               AND n.journal_entry_id=@reversal AND n.line_number=old.line_number
+             WHERE old.tenant_id=@tenant AND old.company_id=@company AND old.journal_entry_id=@source
+            """, c, tx))
+        {
+            copyFixed.Parameters.AddWithValue("reversal",reversalId);
+            copyFixed.Parameters.AddWithValue("tenant",tenant);
+            copyFixed.Parameters.AddWithValue("company",companyId);
+            copyFixed.Parameters.AddWithValue("source",journalId);
+            await copyFixed.ExecuteNonQueryAsync(ct);
+        }
+
+        await using (var copyFloating = new NpgsqlCommand("""
+            INSERT INTO journal_line_dimensions(tenant_id,company_id,journal_line_id,dimension_id)
+            SELECT n.tenant_id,n.company_id,n.id,d.dimension_id
+              FROM journal_lines old
+              JOIN journal_line_dimensions d
+                ON d.tenant_id=old.tenant_id AND d.company_id=old.company_id AND d.journal_line_id=old.id
+              JOIN journal_lines n
+                ON n.tenant_id=old.tenant_id AND n.company_id=old.company_id
+               AND n.journal_entry_id=@reversal AND n.line_number=old.line_number
+             WHERE old.tenant_id=@tenant AND old.company_id=@company AND old.journal_entry_id=@source
+            """, c, tx))
+        {
+            copyFloating.Parameters.AddWithValue("reversal",reversalId);
+            copyFloating.Parameters.AddWithValue("tenant",tenant);
+            copyFloating.Parameters.AddWithValue("company",companyId);
+            copyFloating.Parameters.AddWithValue("source",journalId);
+            await copyFloating.ExecuteNonQueryAsync(ct);
+        }
+
         await WriteAudit(c,tx,tenant,companyId,actor,reversalId,"JOURNAL_REVERSAL_DRAFT_CREATED",ct);
         await tx.CommitAsync(ct);
         return Results.Created($"/api/companies/{companyId}/journal-entries/{reversalId}",
@@ -771,7 +842,9 @@ public sealed record CreateJournalLineRequest(
     Guid AccountId,
     decimal DebitAmount,
     decimal CreditAmount,
-    string? Description);
+    string? Description,
+    Guid? FixedDetailId = null,
+    List<Guid>? DimensionIds = null);
 
 public sealed record CreateReversalDraftRequest(
     string? EntryNumber, DateOnly EntryDate, Guid FiscalPeriodId,
