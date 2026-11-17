@@ -191,6 +191,9 @@ public sealed class AccountsPostgresIntegrationTests : IAsyncLifetime
         using (var deactivateFixedDetail = await _client.PatchAsJsonAsync(fixedDetailsRoute + fixedDetailId + "/active", new { isActive = false }))
             Assert.Equal(HttpStatusCode.OK, deactivateFixedDetail.StatusCode);
 
+        using (var deleteUnusedFixedDetail = await _client.DeleteAsync(fixedDetailsRoute + fixedDetailId))
+            Assert.Equal(HttpStatusCode.NoContent, deleteUnusedFixedDetail.StatusCode);
+
         using (var duplicate = await _client.PostAsJsonAsync(route, new
         {
             code = "100", name = "کد تکراری", level = 1, parentId = (Guid?)null,
