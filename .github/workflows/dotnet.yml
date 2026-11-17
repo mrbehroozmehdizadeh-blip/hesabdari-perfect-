@@ -111,6 +111,7 @@ jobs:
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0019_membership_target_active_guard.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0020_account_chart_class_guards.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0021_fixed_account_details.sql
+          psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/migrations/0022_journal_line_analytics_guards.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/tests/rbac_invariants.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/tests/membership_role_integrity.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/tests/membership_change_governance.sql
@@ -120,3 +121,4 @@ jobs:
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/tests/fiscal_period_controls.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/tests/account_chart_invariants.sql
           psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/tests/fixed_account_detail_invariants.sql
+          psql -h localhost -U samaneh_ci -d samaneh_ci -v ON_ERROR_STOP=1 -f database/tests/journal_line_analytics_invariants.sql
