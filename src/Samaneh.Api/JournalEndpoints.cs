@@ -824,8 +824,8 @@ public static class JournalEndpoints
         await using var cmd = new NpgsqlCommand("""
             SELECT j.id, j.entry_number, j.entry_date, j.currency_code, j.entry_status,
                    j.description, j.fiscal_period_id, p.period_code,
-                   COALESCE(SUM(l.debit_amount), 0)::numeric(28,8),
-                   COALESCE(SUM(l.credit_amount), 0)::numeric(28,8),
+                   COALESCE(SUM(l.debit_amount), 0)::numeric(28,8)::text,
+                   COALESCE(SUM(l.credit_amount), 0)::numeric(28,8)::text,
                    j.created_at
               FROM journal_entries j
               JOIN fiscal_periods p
@@ -857,8 +857,8 @@ public static class JournalEndpoints
                     description = reader.GetString(5),
                     fiscalPeriodId = reader.GetGuid(6),
                     periodCode = reader.GetString(7),
-                    debitTotal = reader.GetDecimal(8),
-                    creditTotal = reader.GetDecimal(9),
+                    debitTotal = reader.GetString(8),
+                    creditTotal = reader.GetString(9),
                     createdAt = reader.GetFieldValue<DateTimeOffset>(10)
                 });
             }
